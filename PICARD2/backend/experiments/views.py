@@ -16,6 +16,19 @@ def _get_result_path(experiment):
     shared_dir = os.environ.get('SPARK_SHARED_DIR', '/opt/spark/apps')
     return os.path.join(shared_dir, f'{experiment.id}_results.txt')
 
+# Author: Chris Jones
+# Date: August 31st, 2026
+# Purpose: Helper method for getting experiment data so that it can be properly rendered on the page.
+# Previously, exp.output was used but was causing an HTTP 500 error. Using this method prevents that.
+def _read_experiment_output(experiment):
+    if not experiment.output:
+        return ''
+
+    try: 
+        with experiment.output.open('rb') as output_file:
+            return output_file.read().decode('utf-8', errors='replace')
+    except (FileNotFoundError, OSError):
+        return ''
 
 def _serialize_experiment_summary(experiment):
     result_path = _get_result_path(experiment)
@@ -53,7 +66,7 @@ def get_experiment_detail(request, experiment_id):
             "script_name": exp.script.name,
             "dataset_name": exp.dataset.name if exp.dataset else '',
             "status": exp.status,
-            "output": exp.output,
+            "output": _read_experiment_output(exp),
             "created_at": exp.created_at,
             "has_result": os.path.exists(result_path),
             "result_url": f"/experiments/{exp.id}/result/" if os.path.exists(result_path) else '',
