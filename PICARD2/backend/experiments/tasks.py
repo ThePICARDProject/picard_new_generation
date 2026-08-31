@@ -25,10 +25,13 @@ def run_db_script(experiment_id):
     spark_result_file = os.path.join(SHARED_DIR, unique_result_filename)
 
     try:
-        cmd = ['spark-submit', '--master', 'spark://spark-master:7077', script_path]
+        cmd = ['spark-submit', '--master', 'spark://spark-master:7077'] # do not append script path before --class if jar
 
         if experiment.script.file_type == 'jar' and experiment.script.main_class:
             cmd.extend(['--class', experiment.script.main_class])
+
+        cmd.append(script_path) # ensure script path is appended after --class if jar
+
         #Upload input
         if experiment.dataset and experiment.dataset.file:
             cmd.append(experiment.dataset.get_absolute_file_path())
