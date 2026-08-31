@@ -1,10 +1,12 @@
 # experiments/tasks.py
 import subprocess
 import os
+import shlex
+import shutil
 from celery import shared_task
 from django.core.files.base import ContentFile
-from django.core.files import File
 from .models import SparkExperiment
+from pathlib import Path
 
 SHARED_DIR = os.environ.get('SPARK_SHARED_DIR', '/opt/spark/apps')
 
@@ -38,7 +40,13 @@ def run_db_script(experiment_id):
 
         # 2. Pass the unique result file path to your Spark script
         # (Make sure your Spark script reads this argument to know where to save!)
-        cmd.append(spark_result_file)
+        cmd.extend([ # CoDRIFT expects the output location as two separate values, this may have to be tweaked in the future when restoring algorithm-agnosticism, this change is being made for the sake of getting a single (CoDRIFT) algorithm working. 
+            SHARED_DIR,
+            unique_result_filename
+        ])
+
+        cmd.extend(shlex.split(experiment.args)) # split the arg string stored in the database into seven separate arguments, which CoDRIFT expects.
+        # cmd.extend adds each value separately
 
         process = subprocess.Popen(
             cmd,
@@ -60,22 +68,32 @@ def run_db_script(experiment_id):
             f.write(f"\nInternal Error: {str(e)}")
         experiment.status = 'Failed'
     finally:
-        # 3. Process the unique results file
-        if os.path.exists(spark_result_file):
-            with open(spark_result_file, 'rb') as f:
-                # The filename passed here (f"{experiment.id}.txt") is passed to your
-                # experiment_result_path function in models.py.
-                # Setting save=True ensures the file is safely ingested before we delete it.
-                experiment.result.save(f"{experiment.id}.txt", File(f), save=True)
+        # 3. Process the unique results file        
+        result_directory = Path(spark_result_file)
+        part_files = sorted(result_directory.glob('part-*')) # sort part files
 
-            # 4. Clean up the original file from the shared directory
-            os.remove(spark_result_file)
+        if result_directory.is_dir() and part_files:
+            result_content = b''.join( # combine part files into one result artifact
+                part_file.read_bytes() # read part files in deterministic filename order
+                for part_file in part_files
+            )
+
+            experiment.result.save( # save the result artifact
+                f'{experiment.id}.txt',
+                ContentFile(result_content),
+                save=False
+            )
+
+            shutil.rmtree(result_directory) # remove the temporary Spark output directory
 
             with open(output_path, 'a') as f:
-                f.write(f"\n[System: Successfully imported results to backend storage.]")
+                f.write('\n[System: Successfully imported results to backend storage.]')
+
         else:
             with open(output_path, 'a') as f:
-                f.write(f"\n[System: No {unique_result_filename} found in shared directory.]")
+                f.write(
+                    f'\n[System: No result parts found in {unique_result_filename}.]'
+                )
 
         # Save the final status
         experiment.save()
