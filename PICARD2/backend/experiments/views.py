@@ -1,5 +1,8 @@
 # experiments/views.py
 import os
+from kombu.exceptions import OperationalError
+
+from django.db import transaction
 from django.db.models import Q
 from django.http import FileResponse, JsonResponse
 
@@ -170,21 +173,31 @@ def run_script(request, script_id):
 @permission_classes([IsAuthenticated])
 def run_experiment(request, experiment_id):  # <-- New Method
     try:
-        # Get the experiment, ensuring it belongs to the logged-in user
-        experiment = SparkExperiment.objects.get(id=experiment_id, user=request.user)
+        # Keep the state change and broker publish together. If the execution
+        # service is unavailable, the transaction rolls back so a failed run
+        # does not become stuck in a misleading Queued state.
+        with transaction.atomic():
+            experiment = SparkExperiment.objects.select_for_update().get(
+                id=experiment_id,
+                user=request.user,
+            )
 
-        # Reset output and status, then save
-        experiment.status = 'Queued'
-        experiment.output = ""
-        experiment.save(update_fields=['status', 'output'])
+            experiment.status = 'Queued'
+            experiment.save(update_fields=['status'])
 
-        # Pass the experiment ID to the worker
-        run_db_script.delay(experiment.id)
+            # The worker replaces stale output/result artifacts once it has
+            # actually accepted the job. Until then, preserve the failed run.
+            run_db_script.delay(experiment.id)
 
         return JsonResponse(
             {"experiment_id": experiment.id, "status": "Queued", "message": "Experiment added to queue"})
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Experiment not found or access denied"}, status=404)
+    except OperationalError:
+        return JsonResponse(
+            {"error": "Experiment execution service is unavailable. Please try again shortly."},
+            status=503,
+        )
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

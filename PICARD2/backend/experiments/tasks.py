@@ -16,6 +16,14 @@ def run_db_script(experiment_id):
     experiment = SparkExperiment.objects.select_related('script', 'dataset').get(id=experiment_id)
     experiment.status = 'Running'
 
+    # A re-run owns the same artifact names as the previous attempt. Remove
+    # those files only after the worker has accepted the job so a broker
+    # failure cannot erase the failed run that the user is trying to inspect.
+    if experiment.output:
+        experiment.output.delete(save=False)
+    if experiment.result:
+        experiment.result.delete(save=False)
+
     experiment.output.save(f"{experiment.id}.txt", ContentFile(""), save=False)
     experiment.save()
 

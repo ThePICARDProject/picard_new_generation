@@ -1,4 +1,4 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
 function buildApiUrl(path) {
   if (/^https?:\/\//i.test(path)) {
@@ -15,7 +15,11 @@ function extractErrorMessage(payload, fallbackMessage) {
   }
 
   if (typeof payload === 'string') {
-    return payload || fallbackMessage
+    const message = payload.trim()
+
+    // Reverse proxies and framework-level failures commonly return an HTML
+    // error document. Never render that markup as a user-facing API message.
+    return message && !message.startsWith('<') ? message : fallbackMessage
   }
 
   if (Array.isArray(payload)) {
