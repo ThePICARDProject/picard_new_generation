@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
@@ -86,6 +87,11 @@ class RunExperimentTests(TestCase):
     def test_worker_replaces_artifacts_after_accepting_rerun(self, popen):
         old_output_name = self.experiment.output.name
         old_result_name = self.experiment.result.name
+        stale_result_directory = (
+            Path(self.media_root) / f'results_{self.experiment.id}.txt'
+        )
+        stale_result_directory.mkdir()
+        (stale_result_directory / 'incomplete-result').write_text('stale')
         process = MagicMock()
         process.stdout.readline.side_effect = ['new attempt output\n', '']
         process.returncode = 1
@@ -99,6 +105,7 @@ class RunExperimentTests(TestCase):
         self.assertEqual(self.experiment.output.name, old_output_name)
         self.assertFalse(self.experiment.result.name)
         self.assertFalse(self.experiment.result.storage.exists(old_result_name))
+        self.assertFalse(stale_result_directory.exists())
         with self.experiment.output.open('r') as output_file:
             output = output_file.read()
         self.assertIn('new attempt output', output)

@@ -84,11 +84,16 @@ services:
 
   spark-worker:
     build: ./spark-cluster
+    # Local-development quick fix: the Spark driver currently runs as root
+    # inside Celery and creates the shared result directory as root. Match the
+    # executor UID so it can write result parts. Production should instead use
+    # a shared, non-root UID/group for the driver and workers.
+    user: "0:0"
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_CORES=1
-      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2G
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
     ports:
       - "8081:8081"

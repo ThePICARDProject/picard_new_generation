@@ -33,9 +33,17 @@ def run_db_script(experiment_id):
     # 1. Create a unique result filename in the shared directory
     unique_result_filename = f"results_{experiment.id}.txt"
     spark_result_file = os.path.join(SHARED_DIR, unique_result_filename)
+    result_directory = Path(spark_result_file)
 
     try:
-        cmd = ['spark-submit', '--master', 'spark://spark-master:7077'] # do not append script path before --class if jar
+        # Spark refuses to write to an existing output path, including one
+        # left behind by a failed attempt.
+        if result_directory.is_dir():
+            shutil.rmtree(result_directory)
+        elif result_directory.exists():
+            result_directory.unlink()
+
+        cmd = ['spark-submit', '--master', 'spark://spark-master:7077']
 
         if experiment.script.file_type == 'jar' and experiment.script.main_class:
             cmd.extend(['--class', experiment.script.main_class])
@@ -77,7 +85,6 @@ def run_db_script(experiment_id):
         experiment.status = 'Failed'
     finally:
         # 3. Process the unique results file        
-        result_directory = Path(spark_result_file)
         part_files = sorted(result_directory.glob('part-*')) # sort part files
 
         if result_directory.is_dir() and part_files:
