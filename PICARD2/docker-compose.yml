@@ -74,7 +74,7 @@ services:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
     ports:
-      - "8080:8080" # Spark Master Web UI
+      - "127.0.0.1:18080:8080" # Spark Master Web UI
       - "7077:7077" # Spark Master service port
     volumes:
       - ./backend/media:/app/media:ro #Read only for datasets.

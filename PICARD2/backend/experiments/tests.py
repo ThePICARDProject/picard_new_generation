@@ -110,3 +110,56 @@ class RunExperimentTests(TestCase):
             output = output_file.read()
         self.assertIn('new attempt output', output)
         self.assertNotIn('previous failure', output)
+
+    def test_codrift_requires_all_seven_arguments(self):
+        codrift = Script.objects.create(
+            user=self.user,
+            name='codrift_2.12-1.0.jar',
+            file_type=Script.JAR,
+            file='files/scripts/codrift.jar',
+            main_class='edu.fsu.driver.CoDRIFt',
+        )
+
+        response = self.client.post(
+            reverse('create_experiment'),
+            {
+                'script_id': str(codrift.id),
+                'dataset_id': str(self.dataset.id),
+                'args': '',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('requires seven arguments', response.json()['error'])
+
+    def test_codrift_recommendation_is_exposed_and_accepted(self):
+        codrift = Script.objects.create(
+            user=self.user,
+            name='CoDRIFT',
+            file_type=Script.JAR,
+            file='files/scripts/codrift.jar',
+            main_class='edu.fsu.driver.CoDRIFt',
+        )
+
+        scripts_response = self.client.get(reverse('list_scripts'))
+        script_data = next(
+            script for script in scripts_response.json()
+            if script['id'] == str(codrift.id)
+        )
+        self.assertTrue(script_data['arguments_required'])
+        self.assertEqual(script_data['recommended_args'], '2 10 gini 5 32 70 1')
+
+        create_response = self.client.post(
+            reverse('create_experiment'),
+            {
+                'script_id': str(codrift.id),
+                'dataset_id': str(self.dataset.id),
+                'args': '2 10 GINI 5 32 70 1',
+            },
+            format='json',
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+        experiment = SparkExperiment.objects.get(id=create_response.json()['experiment_id'])
+        self.assertEqual(experiment.args, '2 10 gini 5 32 70 1')

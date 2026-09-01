@@ -10,6 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
 from datasets.models import CSVDataset
+from scripts.algorithms import validate_algorithm_arguments
 from scripts.models import Script
 from .models import SparkExperiment, PUBLIC
 from .tasks import run_db_script
@@ -104,6 +105,10 @@ def create_experiment(request):
             Q(id=script_id) & (Q(user=request.user) | Q(access_level=PUBLIC))
         )
 
+        args, argument_error = validate_algorithm_arguments(script, args)
+        if argument_error:
+            return JsonResponse({"error": argument_error}, status=400)
+
         dataset = None
         if dataset_id:
             dataset = CSVDataset.objects.get(
@@ -146,6 +151,10 @@ def run_script(request, script_id):
         script = Script.objects.get(
             Q(id=script_id) & (Q(user=request.user) | Q(access_level=PUBLIC))
         )
+
+        args, argument_error = validate_algorithm_arguments(script, args)
+        if argument_error:
+            return JsonResponse({"error": argument_error}, status=400)
 
         # Validate Dataset permissions (Mine OR Public)
         dataset = CSVDataset.objects.get(

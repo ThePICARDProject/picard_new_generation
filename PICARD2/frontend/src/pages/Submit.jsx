@@ -41,6 +41,11 @@ export default function Submit() {
     })
   }, [deferredScriptSearch, scripts])
 
+  const selectedAlgorithm = useMemo(
+    () => scripts.find((script) => script.id === experimentForm.scriptId) || null,
+    [experimentForm.scriptId, scripts],
+  )
+
   async function handleDatasetUpload(event) {
     event.preventDefault()
 
@@ -92,12 +97,19 @@ export default function Submit() {
 
     try {
       await play('confirm')
-      await uploadScript({
+      const result = await uploadScript({
         accessLevel: scriptForm.accessLevel,
         file: scriptForm.file,
         mainClass: scriptForm.mainClass,
         name: scriptForm.name,
       })
+      if (result.recommended_args) {
+        setExperimentForm((current) => ({
+          ...current,
+          scriptId: result.script_id,
+          args: result.recommended_args,
+        }))
+      }
       setScriptForm({ accessLevel: 'private', file: null, mainClass: '', name: '' })
       setFeedback({ tone: 'success', text: 'Algorithm uploaded successfully.' })
     } catch (error) {
@@ -112,6 +124,11 @@ export default function Submit() {
 
     if (!experimentForm.scriptId || !experimentForm.datasetId) {
       setFeedback({ tone: 'error', text: 'Select both a dataset and an algorithm before creating an experiment.' })
+      return
+    }
+
+    if (selectedAlgorithm?.arguments_required && !experimentForm.args.trim()) {
+      setFeedback({ tone: 'error', text: 'CoDRIFT arguments are required.' })
       return
     }
 
@@ -281,7 +298,15 @@ export default function Submit() {
               <span>Algorithm</span>
               <select
                 value={experimentForm.scriptId}
-                onChange={(event) => setExperimentForm((current) => ({ ...current, scriptId: event.target.value }))}
+                onChange={(event) => {
+                  const scriptId = event.target.value
+                  const script = scripts.find((candidate) => candidate.id === scriptId)
+                  setExperimentForm((current) => ({
+                    ...current,
+                    scriptId,
+                    args: script?.recommended_args || '',
+                  }))
+                }}
               >
                 <option value="">Select an algorithm</option>
                 {scripts.map((script) => (
@@ -306,15 +331,21 @@ export default function Submit() {
               </select>
             </label>
             <label className="field" style={{ marginTop: '1rem' }}>
-              <span>Arguments (Optional)</span>
+              <span>Arguments{selectedAlgorithm?.arguments_required ? ' (Required)' : ''}</span>
               <input
                 type="text"
                 value={experimentForm.args}
                 onChange={(event) => setExperimentForm((current) => ({ ...current, args: event.target.value }))}
-                placeholder="e.g., --param1 value1 --param2 value2"
+                placeholder={selectedAlgorithm?.recommended_args || 'Algorithm arguments'}
+                required={Boolean(selectedAlgorithm?.arguments_required)}
               />
             </label>
           </div>
+          {selectedAlgorithm?.is_codrift ? (
+            <p className="helper-text">
+              CoDRIFT order: numClasses numTrees impurity maxDepth maxBins percentLabeled k. Recommended: {selectedAlgorithm.recommended_args}.
+            </p>
+          ) : null}
           <p className="helper-text">New experiments are created in a pending state. Queue or re-run them from the runs console.</p>
           <div className="form-actions">
             <button type="submit" className="action-button" disabled={busyAction === 'experiment'}>
