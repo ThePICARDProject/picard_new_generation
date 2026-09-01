@@ -12,9 +12,19 @@ from .models import SparkExperiment, PUBLIC
 from .tasks import run_db_script
 
 
-def _get_result_path(experiment):
-    shared_dir = os.environ.get('SPARK_SHARED_DIR', '/opt/spark/apps')
-    return os.path.join(shared_dir, f'{experiment.id}_results.txt')
+# def _get_result_path(experiment):
+#     shared_dir = os.environ.get('SPARK_SHARED_DIR', '/opt/spark/apps')
+#     return os.path.join(shared_dir, f'{experiment.id}_results.txt')
+
+# Author: Chris Jones
+# Date: August 31 2026
+# Purpose: Helper method for checking if experiment result exists
+def _has_experiment_result(experiment):
+    return bool(
+        experiment.result
+        and experiment.result.name
+        and experiment.result.storage.exists(experiment.result.name)
+    )
 
 # Author: Chris Jones
 # Date: August 31st, 2026
@@ -31,7 +41,7 @@ def _read_experiment_output(experiment):
         return ''
 
 def _serialize_experiment_summary(experiment):
-    result_path = _get_result_path(experiment)
+    has_result = _has_experiment_result(experiment) # use helper method for checking if the experiment result exists
     return {
         "id": experiment.id,
         "script_name": experiment.script.name,
@@ -39,8 +49,8 @@ def _serialize_experiment_summary(experiment):
         "args": getattr(experiment, 'args', ''),  # <-- NEW: Include args
         "status": experiment.status,
         "created_at": experiment.created_at,
-        "has_result": os.path.exists(result_path),
-        "result_url": f"/experiments/{experiment.id}/result/" if os.path.exists(result_path) else '',
+        "has_result": has_result,
+        "result_url": f"/experiments/{experiment.id}/result/" if has_result else '', # update to use new has_result bool
     }
 # 1. GET: List all experiments for the logged-in user
 @api_view(['GET'])
@@ -60,7 +70,7 @@ def list_experiments(request):
 def get_experiment_detail(request, experiment_id):
     try:
         exp = SparkExperiment.objects.get(id=experiment_id, user=request.user)
-        result_path = _get_result_path(exp)
+        has_result = _has_experiment_result(exp) # update to use helper method
         return JsonResponse({
             "id": exp.id,
             "script_name": exp.script.name,
@@ -68,8 +78,8 @@ def get_experiment_detail(request, experiment_id):
             "status": exp.status,
             "output": _read_experiment_output(exp),
             "created_at": exp.created_at,
-            "has_result": os.path.exists(result_path),
-            "result_url": f"/experiments/{exp.id}/result/" if os.path.exists(result_path) else '',
+            "has_result": has_result,
+            "result_url": f"/experiments/{exp.id}/result/" if has_result else '',
         })
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Not found"}, status=404)
@@ -184,11 +194,15 @@ def download_experiment_result(request, experiment_id):
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Experiment not found or access denied"}, status=404)
 
-    result_path = _get_result_path(experiment)
-    if not os.path.exists(result_path):
+    if not _has_experiment_result(experiment): # use helper method for checking if the experiment has a result
         return JsonResponse({"error": "Result file not found"}, status=404)
 
-    return FileResponse(open(result_path, 'rb'), as_attachment=True, filename=os.path.basename(result_path))
+    # Stream the storage-backed result as a download without loading the entire file into memory.
+    return FileResponse(
+        experiment.result.open('rb'),
+        as_attachment=True,
+        filename=os.path.basename(experiment.result.name),
+    )
 
 
 @api_view(['DELETE'])
@@ -199,10 +213,18 @@ def delete_experiment(request, experiment_id):
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Experiment not found or access denied"}, status=404)
 
-    result_path = _get_result_path(experiment)
-    experiment.delete()
+    # result_path = _get_result_path(experiment)
+    # experiment.delete()
 
-    if os.path.exists(result_path):
-        os.remove(result_path)
+    # if os.path.exists(result_path):
+    #     os.remove(result_path)
+
+    if experiment.output:
+        experiment.output.delete(save=False)
+
+    if experiment.result:
+        experiment.result.delete(save=False)
+
+    experiment.delete()
 
     return JsonResponse({"message": "Experiment deleted successfully"}, status=200)
