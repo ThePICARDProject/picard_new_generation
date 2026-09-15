@@ -22,6 +22,11 @@ export default function Experiments() {
   const [searchValue, setSearchValue] = useState('')
   const logOutputRef = useRef(null)
 
+  const isQueueing = busyAction === `run-${experimentDetail?.id}`
+  const isExperimentActive = ['Queued', 'Running'].includes(
+    experimentDetail?.status,
+  )
+
   const deferredSearchValue = useDeferredValue(searchValue)
 
   const filteredExperiments = useMemo(() => {
@@ -215,9 +220,13 @@ export default function Experiments() {
                   type="button"
                   className="action-button"
                   onClick={() => handleRun(experimentDetail.id)}
-                  disabled={busyAction === `run-${experimentDetail.id}`}
+                  disabled={isQueueing || isExperimentActive}
                 >
-                  {busyAction === `run-${experimentDetail.id}` ? 'Queueing...' : 'Run / Re-run'}
+                  {isQueueing
+                    ? 'Queueing...'
+                    : isExperimentActive
+                      ? experimentDetail.status
+                      : 'Run / Re-run'}
                 </button>
                 {experimentDetail.has_result ? (
                   <a className="action-button secondary" href={downloadResultUrl(experimentDetail.result_url)}>

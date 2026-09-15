@@ -1,4 +1,5 @@
 import LcarsLayout from '../components/layout/LcarsLayout'
+import StatusBadge from '../components/common/StatusBadge'
 import { useAuth } from '../components/auth/AuthProvider'
 import { useWorkspace } from '../components/workspace/WorkspaceProvider'
 
@@ -95,7 +96,7 @@ export default function Profile() {
                     <strong>Experiment #{experiment.id}</strong>
                     <p>{experiment.script_name}</p>
                   </div>
-                  <span className={`access-pill ${experiment.status === 'Success' ? 'public' : 'private'}`}>{experiment.status}</span>
+                  <StatusBadge status={experiment.status} />
                 </li>
               ))}
             </ul>
