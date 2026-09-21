@@ -1,5 +1,5 @@
 # Use the official Python image
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Set working directory
 WORKDIR /app
@@ -24,7 +24,7 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 2. Install PySpark
-RUN pip install --no-cache-dir pyspark==3.5.0
+RUN pip install --no-cache-dir pyspark==3.5.8
 
 # Install Docker CLI so the backend can scale containers
 RUN apt-get update && apt-get install -y docker.io

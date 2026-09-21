@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import LcarsLayout from '../components/layout/LcarsLayout'
 import StatusBadge from '../components/common/StatusBadge'
 import { useSound } from '../components/audio/SoundProvider'
@@ -20,6 +20,12 @@ export default function Experiments() {
   const [detailError, setDetailError] = useState('')
   const [busyAction, setBusyAction] = useState('')
   const [searchValue, setSearchValue] = useState('')
+  const logOutputRef = useRef(null)
+
+  const isQueueing = busyAction === `run-${experimentDetail?.id}`
+  const isExperimentActive = ['Queued', 'Running'].includes(
+    experimentDetail?.status,
+  )
 
   const deferredSearchValue = useDeferredValue(searchValue)
 
@@ -95,6 +101,13 @@ export default function Experiments() {
 
     return () => window.clearInterval(intervalId)
   }, [experimentDetail, loadExperimentDetail, refreshExperiments, selectedExperimentId])
+
+  useEffect(() => {
+    const logOutput = logOutputRef.current
+    if (logOutput) {
+      logOutput.scrollTop = logOutput.scrollHeight
+    }
+  }, [experimentDetail?.id, experimentDetail?.output])
 
   async function handleRun(experimentId) {
     setBusyAction(`run-${experimentId}`)
@@ -207,9 +220,13 @@ export default function Experiments() {
                   type="button"
                   className="action-button"
                   onClick={() => handleRun(experimentDetail.id)}
-                  disabled={busyAction === `run-${experimentDetail.id}`}
+                  disabled={isQueueing || isExperimentActive}
                 >
-                  {busyAction === `run-${experimentDetail.id}` ? 'Queueing...' : 'Run / Re-run'}
+                  {isQueueing
+                    ? 'Queueing...'
+                    : isExperimentActive
+                      ? experimentDetail.status
+                      : 'Run / Re-run'}
                 </button>
                 {experimentDetail.has_result ? (
                   <a className="action-button secondary" href={downloadResultUrl(experimentDetail.result_url)}>
@@ -235,7 +252,7 @@ export default function Experiments() {
 
               <div className="log-panel">
                 <p className="lcars-eyebrow">Live Output</p>
-                <pre className="detail-log">{experimentDetail.output || 'No output has been recorded yet.'}</pre>
+                <pre ref={logOutputRef} className="detail-log">{experimentDetail.output || 'No output has been recorded yet.'}</pre>
               </div>
             </>
           ) : (

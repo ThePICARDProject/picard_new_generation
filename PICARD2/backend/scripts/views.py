@@ -5,6 +5,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
+from scripts.algorithms import get_algorithm_metadata
 from scripts.models import PRIVATE, PUBLIC, Script
 from scripts.jar_metadata import detect_main_class
 
@@ -19,6 +20,10 @@ def list_scripts(request):
 
     script_data = []
     for script in scripts:
+        algorithm_metadata = get_algorithm_metadata(
+            display_name=script.name,
+            main_class=script.main_class,
+        )
         script_data.append({
             'id': script.id,
             'name': script.name,
@@ -27,6 +32,7 @@ def list_scripts(request):
             'owner': script.user.username,
             'created_at': script.created_at,
             'main_class': script.main_class,
+            **algorithm_metadata,
         })
 
     return JsonResponse(script_data, safe=False)
@@ -68,7 +74,17 @@ def upload_script(request):
         access_level=access,
         main_class = main_class
     )
-    return JsonResponse({"script_id": script.id, "access_level": script.access_level, "main_class": script.main_class})
+    algorithm_metadata = get_algorithm_metadata(
+        display_name=script.name,
+        main_class=script.main_class,
+        upload_name=file.name,
+    )
+    return JsonResponse({
+        "script_id": script.id,
+        "access_level": script.access_level,
+        "main_class": script.main_class,
+        **algorithm_metadata,
+    })
 
 
 @api_view(['DELETE'])

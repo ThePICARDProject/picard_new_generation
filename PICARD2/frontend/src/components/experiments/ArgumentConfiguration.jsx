@@ -50,6 +50,12 @@ export default function ArgumentConfiguration({ algorithmName, definitions, args
                 ) : (
                   <input
                     type="number"
+                    ref={(input) => {
+                      input?.setCustomValidity(
+                        parameter.minExclusive && Number(values[parameter.name]) <= parameter.min
+                          ? `Enter a value greater than ${parameter.min}.` : '',
+                      )
+                    }}
                     required
                     min={parameter.min}
                     max={parameter.max}
@@ -62,7 +68,7 @@ export default function ArgumentConfiguration({ algorithmName, definitions, args
                 <small className="helper-text" id={helpId}>
                   {parameter.type === 'integer' ? 'Integer' : parameter.type === 'choice' ? 'Choice' : 'Number'}
                   {' · Default: '}{parameter.defaultValue}
-                  {' · Allowed: '}{parameter.choices ? parameter.choices.join(', ') : `${parameter.min}–${parameter.max}`}
+                  {' · Allowed: '}{parameter.choices ? parameter.choices.join(', ') : parameter.minExclusive ? `greater than ${parameter.min}, up to ${parameter.max}` : `${parameter.min}–${parameter.max}`}
                   {parameter.description ? <><br />{parameter.description}</> : null}
                 </small>
               </label>

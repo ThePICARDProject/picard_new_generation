@@ -1,24 +1,53 @@
 # experiments/views.py
 import os
+import shlex
+from kombu.exceptions import OperationalError
+
+from django.db import transaction
 from django.db.models import Q
 from django.http import FileResponse, JsonResponse
+from django.contrib.auth.models import User
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
 from datasets.models import CSVDataset
+from scripts.algorithms import validate_algorithm_arguments
 from scripts.models import Script
 from .models import SparkExperiment, PUBLIC
 from .tasks import run_db_script
 
 
-def _get_result_path(experiment):
-    shared_dir = os.environ.get('SPARK_SHARED_DIR', '/opt/spark/apps')
-    return os.path.join(shared_dir, f'{experiment.id}_results.txt')
+# def _get_result_path(experiment):
+#     shared_dir = os.environ.get('SPARK_SHARED_DIR', '/opt/spark/apps')
+#     return os.path.join(shared_dir, f'{experiment.id}_results.txt')
 
+# Author: Chris Jones
+# Date: August 31 2026
+# Purpose: Helper method for checking if experiment result exists
+def _has_experiment_result(experiment):
+    return bool(
+        experiment.result
+        and experiment.result.name
+        and experiment.result.storage.exists(experiment.result.name)
+    )
+
+# Author: Chris Jones
+# Date: August 31st, 2026
+# Purpose: Helper method for getting experiment data so that it can be properly rendered on the page.
+# Previously, exp.output was used but was causing an HTTP 500 error. Using this method prevents that.
+def _read_experiment_output(experiment):
+    if not experiment.output:
+        return ''
+
+    try: 
+        with experiment.output.open('rb') as output_file:
+            return output_file.read().decode('utf-8', errors='replace')
+    except (FileNotFoundError, OSError):
+        return ''
 
 def _serialize_experiment_summary(experiment):
-    result_path = _get_result_path(experiment)
+    has_result = _has_experiment_result(experiment) # use helper method for checking if the experiment result exists
     return {
         "id": experiment.id,
         "script_name": experiment.script.name,
@@ -26,9 +55,35 @@ def _serialize_experiment_summary(experiment):
         "args": getattr(experiment, 'args', ''),  # <-- NEW: Include args
         "status": experiment.status,
         "created_at": experiment.created_at,
-        "has_result": os.path.exists(result_path),
-        "result_url": f"/experiments/{experiment.id}/result/" if os.path.exists(result_path) else '',
+        "has_result": has_result,
+        "result_url": f"/experiments/{experiment.id}/result/" if has_result else '', # update to use new has_result bool
     }
+
+def _find_active_duplicate(*, user_id, script_id, dataset_id, args):
+    argument_values = shlex.split(args)
+
+    candidates = SparkExperiment.objects.filter(
+        user_id=user_id,
+        script_id=script_id,
+        dataset_id=dataset_id,
+        status__in=('Queued', 'Running'),
+    ).only('id', 'args')
+
+    for candidate in candidates:
+        try:
+            candidate_values = shlex.split(candidate.args)
+        except ValueError:
+            # an older record with malformed quotes cannot be compared.
+            continue
+
+        if candidate_values == argument_values:
+            return candidate
+    
+    return None
+
+
+### ENDPOINT FUNCTIONS ###
+
 # 1. GET: List all experiments for the logged-in user
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -47,16 +102,16 @@ def list_experiments(request):
 def get_experiment_detail(request, experiment_id):
     try:
         exp = SparkExperiment.objects.get(id=experiment_id, user=request.user)
-        result_path = _get_result_path(exp)
+        has_result = _has_experiment_result(exp) # update to use helper method
         return JsonResponse({
             "id": exp.id,
             "script_name": exp.script.name,
             "dataset_name": exp.dataset.name if exp.dataset else '',
             "status": exp.status,
-            "output": exp.output,
+            "output": _read_experiment_output(exp),
             "created_at": exp.created_at,
-            "has_result": os.path.exists(result_path),
-            "result_url": f"/experiments/{exp.id}/result/" if os.path.exists(result_path) else '',
+            "has_result": has_result,
+            "result_url": f"/experiments/{exp.id}/result/" if has_result else '',
         })
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Not found"}, status=404)
@@ -77,6 +132,10 @@ def create_experiment(request):
         script = Script.objects.get(
             Q(id=script_id) & (Q(user=request.user) | Q(access_level=PUBLIC))
         )
+
+        args, argument_error = validate_algorithm_arguments(script, args)
+        if argument_error:
+            return JsonResponse({"error": argument_error}, status=400)
 
         dataset = None
         if dataset_id:
@@ -121,47 +180,149 @@ def run_script(request, script_id):
             Q(id=script_id) & (Q(user=request.user) | Q(access_level=PUBLIC))
         )
 
+        args, argument_error = validate_algorithm_arguments(script, args)
+        if argument_error:
+            return JsonResponse({"error": argument_error}, status=400)
+
         # Validate Dataset permissions (Mine OR Public)
         dataset = CSVDataset.objects.get(
             Q(id=dataset_id) & (Q(user=request.user) | Q(access_level=PUBLIC))
         )
 
-        experiment = SparkExperiment.objects.create(
-            user=request.user,
-            script=script,
-            dataset=dataset,
-            args=args,
-            status='Queued'
-        )
-        # Pass the experiment ID to the worker
-        run_db_script.delay(experiment.id)
+        # experiment = SparkExperiment.objects.create(
+        #     user=request.user,
+        #     script=script,
+        #     dataset=dataset,
+        #     args=args,
+        #     status='Queued'
+        # )
+        
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=request.user.pk)
 
-        return JsonResponse({"experiment_id": experiment.id, "status": "Queued"})
+            duplicate = _find_active_duplicate(
+                user_id=request.user.pk,
+                script_id=script.pk,
+                dataset_id=dataset.pk,
+                args=args,
+            )
+
+            if duplicate is not None:
+                return JsonResponse(
+                    {
+                        "error": (
+                            "An experiment with these settings is "
+                            "already queued or running."
+                        ),
+                        "experiment_id": duplicate.id,
+                    },
+                    status=409,
+                )
+            
+            experiment = SparkExperiment.objects.create(
+                user=request.user,
+                script=script,
+                dataset=dataset,
+                args=args,
+                status="Queued",
+            )
+
+        # Commit the new record before the worker can receive its ID.
+        try:
+            run_db_script.delay(experiment.id)
+        except OperationalError:
+            SparkExperiment.objects.filter(
+                pk=experiment.pk,
+                status='Queued',
+            ).update(status='Failed')
+
+            return JsonResponse(
+                {
+                    "error": (
+                        "Experiment execution service is unavailable. "
+                        "Please try again shortly."
+                    ),
+                },
+                status=503,
+            )
+
+        return JsonResponse(
+            {"experiment_id": experiment.id, "status": "Queued"},
+        )
     except Script.DoesNotExist:
         return JsonResponse({"error": "Script not found or access denied"}, status=404)
     except CSVDataset.DoesNotExist:
         return JsonResponse({"error": "Dataset not found or access denied"}, status=404)
+    except ValueError:
+        return JsonResponse({"error": "Experiment arguments contain an unmatched quote."}, status=400)
 
 # 5. POST: Queue an already existing Experiment
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def run_experiment(request, experiment_id):  # <-- New Method
     try:
-        # Get the experiment, ensuring it belongs to the logged-in user
-        experiment = SparkExperiment.objects.get(id=experiment_id, user=request.user)
+        # Keep the state change and broker publish together. If the execution
+        # service is unavailable, the transaction rolls back so a failed run
+        # does not become stuck in a misleading Queued state.
+        with transaction.atomic():
 
-        # Reset output and status, then save
-        experiment.status = 'Queued'
-        experiment.output = ""
-        experiment.save(update_fields=['status', 'output'])
+            # acquiring the user lock before the experiment lock:
+            # serialize queue submission for this user
+            User.objects.select_for_update().get(pk=request.user.pk)
 
-        # Pass the experiment ID to the worker
-        run_db_script.delay(experiment.id)
+            experiment = SparkExperiment.objects.select_for_update().get(
+                id=experiment_id,
+                user=request.user,
+            )
+
+            if experiment.status in ('Queued', 'Running'):
+                return JsonResponse(
+                    {"error": "This experiment is already queued or running."},
+                    status=409,
+                )
+
+            # use helper method to identify any active duplicates
+            duplicate = _find_active_duplicate(
+                user_id=request.user.pk,
+                script_id=experiment.script_id,
+                dataset_id=experiment.dataset_id,
+                args=experiment.args,
+            )
+
+            if duplicate is not None:
+                return JsonResponse(
+                    {
+                        "error": (
+                            "An experiment with these settings is "
+                            "already queued or running."
+                        ),
+                        "experiment_id": duplicate.id,
+                    },
+                    status=409,
+                )
+
+            # else, the experiment is not already queued or running
+            experiment.status = 'Queued'
+            experiment.save(update_fields=['status'])
+
+            # The worker replaces stale output/result artifacts once it has
+            # actually accepted the job. Until then, preserve the failed run.
+            run_db_script.delay(experiment.id)
 
         return JsonResponse(
             {"experiment_id": experiment.id, "status": "Queued", "message": "Experiment added to queue"})
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Experiment not found or access denied"}, status=404)
+    except OperationalError:
+        return JsonResponse(
+            {"error": "Experiment execution service is unavailable. Please try again shortly."},
+            status=503,
+        )
+    except ValueError:
+        return JsonResponse(
+            {"error": "Experiment arguments contain an unmatched quote."},
+            status=400,
+        )
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -171,11 +332,15 @@ def download_experiment_result(request, experiment_id):
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Experiment not found or access denied"}, status=404)
 
-    result_path = _get_result_path(experiment)
-    if not os.path.exists(result_path):
+    if not _has_experiment_result(experiment): # use helper method for checking if the experiment has a result
         return JsonResponse({"error": "Result file not found"}, status=404)
 
-    return FileResponse(open(result_path, 'rb'), as_attachment=True, filename=os.path.basename(result_path))
+    # Stream the storage-backed result as a download without loading the entire file into memory.
+    return FileResponse(
+        experiment.result.open('rb'),
+        as_attachment=True,
+        filename=os.path.basename(experiment.result.name),
+    )
 
 
 @api_view(['DELETE'])
@@ -186,10 +351,18 @@ def delete_experiment(request, experiment_id):
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Experiment not found or access denied"}, status=404)
 
-    result_path = _get_result_path(experiment)
-    experiment.delete()
+    # result_path = _get_result_path(experiment)
+    # experiment.delete()
 
-    if os.path.exists(result_path):
-        os.remove(result_path)
+    # if os.path.exists(result_path):
+    #     os.remove(result_path)
+
+    if experiment.output:
+        experiment.output.delete(save=False)
+
+    if experiment.result:
+        experiment.result.delete(save=False)
+
+    experiment.delete()
 
     return JsonResponse({"message": "Experiment deleted successfully"}, status=200)

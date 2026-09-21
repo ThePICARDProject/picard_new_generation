@@ -99,6 +99,13 @@ export default function Submit() {
         mainClass: scriptForm.mainClass,
         name: scriptForm.name,
       })
+      if (result.recommended_args) {
+        setExperimentForm((current) => ({
+          ...current,
+          scriptId: result.script_id,
+          args: result.recommended_args,
+        }))
+      }
       setScriptForm({ accessLevel: 'private', file: null, mainClass: '', name: '' })
       setFeedback({
         tone: 'success',
@@ -118,6 +125,11 @@ export default function Submit() {
 
     if (!experimentForm.scriptId || !experimentForm.datasetId) {
       setFeedback({ tone: 'error', text: 'Select both a dataset and an algorithm before creating an experiment.' })
+      return
+    }
+
+    if (selectedScript?.arguments_required && !experimentForm.args.trim()) {
+      setFeedback({ tone: 'error', text: 'CoDRIFT arguments are required.' })
       return
     }
 
@@ -292,9 +304,10 @@ export default function Submit() {
                 value={experimentForm.scriptId}
                 onChange={(event) => {
                   const scriptId = event.target.value
-                  const definitions = getArgumentDefinitions(scripts.find((script) => script.id === scriptId))
+                  const script = scripts.find((candidate) => candidate.id === scriptId)
+                  const definitions = getArgumentDefinitions(script)
                   setExperimentForm((current) => ({
-                    ...current, scriptId, args: definitions ? defaultArguments(definitions) : '',
+                    ...current, scriptId, args: script?.recommended_args || (definitions ? defaultArguments(definitions) : ''),
                   }))
                 }}
               >
@@ -321,12 +334,13 @@ export default function Submit() {
               </select>
             </label>
             {!argumentDefinitions ? <label className="field" style={{ marginTop: '1rem' }}>
-              <span>Arguments (Optional)</span>
+              <span>Arguments ({selectedScript?.arguments_required ? 'Required' : 'Optional'})</span>
               <input
                 type="text"
                 value={experimentForm.args}
                 onChange={(event) => setExperimentForm((current) => ({ ...current, args: event.target.value }))}
-                placeholder="e.g., --param1 value1 --param2 value2"
+                placeholder={selectedScript?.recommended_args || 'Algorithm arguments'}
+                required={Boolean(selectedScript?.arguments_required)}
               />
             </label> : null}
           </div>
