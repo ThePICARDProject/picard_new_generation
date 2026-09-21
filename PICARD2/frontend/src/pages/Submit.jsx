@@ -1,4 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
+import ArgumentConfiguration from '../components/experiments/ArgumentConfiguration'
+import { defaultArguments, getArgumentDefinitions } from '../lib/argumentDefinitions'
 import LcarsLayout from '../components/layout/LcarsLayout'
 import { useAuth } from '../components/auth/AuthProvider'
 import { useSound } from '../components/audio/SoundProvider'
@@ -19,6 +21,10 @@ export default function Submit() {
   const [datasetForm, setDatasetForm] = useState({ accessLevel: 'private', file: null, name: '' })
   const [scriptForm, setScriptForm] = useState({ accessLevel: 'private', file: null, mainClass: '', name: '' })
   const [experimentForm, setExperimentForm] = useState({ datasetId: '', scriptId: '', args: '' })
+  const [configurationOpen, setConfigurationOpen] = useState(false)
+  const selectedScript = scripts.find((script) => script.id === experimentForm.scriptId)
+  const argumentDefinitions = getArgumentDefinitions(selectedScript)
+
   const [datasetSearch, setDatasetSearch] = useState('')
   const [scriptSearch, setScriptSearch] = useState('')
   const [feedback, setFeedback] = useState({ tone: '', text: '' })
@@ -82,24 +88,24 @@ export default function Submit() {
       return
     }
 
-    if (extension === 'jar' && !scriptForm.mainClass.trim()) {
-      setFeedback({ tone: 'error', text: 'A main class is required for JAR uploads.' })
-      return
-    }
-
     setBusyAction('script')
     setFeedback({ tone: '', text: '' })
 
     try {
       await play('confirm')
-      await uploadScript({
+      const result = await uploadScript({
         accessLevel: scriptForm.accessLevel,
         file: scriptForm.file,
         mainClass: scriptForm.mainClass,
         name: scriptForm.name,
       })
       setScriptForm({ accessLevel: 'private', file: null, mainClass: '', name: '' })
-      setFeedback({ tone: 'success', text: 'Algorithm uploaded successfully.' })
+      setFeedback({
+        tone: 'success',
+        text: result.main_class
+          ? `Algorithm uploaded successfully. Main class: ${result.main_class}`
+          : 'Algorithm uploaded successfully.',
+      })
     } catch (error) {
       setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Algorithm upload failed.' })
     } finally {
@@ -239,12 +245,14 @@ export default function Submit() {
                 />
               </label>
               <label className="field">
-                <span>JAR main class</span>
+                <span>JAR main class override (optional)</span>
                 <input
                   type="text"
                   value={scriptForm.mainClass}
                   onChange={(event) => setScriptForm((current) => ({ ...current, mainClass: event.target.value }))}
-                  placeholder="Required for .jar uploads"
+                  placeholder="Detected automatically from the JAR"
+                  maxLength={255}
+                  aria-describedby="main-class-help"
                 />
               </label>
               <label className="field">
@@ -262,6 +270,7 @@ export default function Submit() {
               <span>Algorithm file</span>
               <input type="file" accept=".py,.jar" onChange={(event) => setScriptForm((current) => ({ ...current, file: event.target.files?.[0] || null }))} />
             </label>
+            <p className="helper-text" id="main-class-help">Leave the main class blank to detect it from the JAR. Enter an override only if needed.</p>
             <p className="helper-text">Supported formats: Python scripts and runnable Spark JARs only.</p>
             <div className="form-actions">
               <button type="submit" className="action-button" disabled={busyAction === 'script'}>
@@ -281,7 +290,13 @@ export default function Submit() {
               <span>Algorithm</span>
               <select
                 value={experimentForm.scriptId}
-                onChange={(event) => setExperimentForm((current) => ({ ...current, scriptId: event.target.value }))}
+                onChange={(event) => {
+                  const scriptId = event.target.value
+                  const definitions = getArgumentDefinitions(scripts.find((script) => script.id === scriptId))
+                  setExperimentForm((current) => ({
+                    ...current, scriptId, args: definitions ? defaultArguments(definitions) : '',
+                  }))
+                }}
               >
                 <option value="">Select an algorithm</option>
                 {scripts.map((script) => (
@@ -305,7 +320,7 @@ export default function Submit() {
                 ))}
               </select>
             </label>
-            <label className="field" style={{ marginTop: '1rem' }}>
+            {!argumentDefinitions ? <label className="field" style={{ marginTop: '1rem' }}>
               <span>Arguments (Optional)</span>
               <input
                 type="text"
@@ -313,8 +328,26 @@ export default function Submit() {
                 onChange={(event) => setExperimentForm((current) => ({ ...current, args: event.target.value }))}
                 placeholder="e.g., --param1 value1 --param2 value2"
               />
-            </label>
+            </label> : null}
           </div>
+          {argumentDefinitions ? (
+            <div className="argument-summary">
+              <div className="panel-heading-row">
+                <h3>Algorithm arguments</h3>
+                <button type="button" className="action-button secondary" onClick={() => setConfigurationOpen(true)}>
+                  Configure arguments
+                </button>
+              </div>
+              <dl className="argument-values">
+                {argumentDefinitions.map((parameter, index) => (
+                  <div key={parameter.name}>
+                    <dt>{parameter.label}</dt>
+                    <dd>{experimentForm.args.split(/\s+/)[index]}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : null}
           <p className="helper-text">New experiments are created in a pending state. Queue or re-run them from the runs console.</p>
           <div className="form-actions">
             <button type="submit" className="action-button" disabled={busyAction === 'experiment'}>
@@ -323,6 +356,19 @@ export default function Submit() {
           </div>
         </form>
       </section>
+
+      {configurationOpen && argumentDefinitions ? (
+        <ArgumentConfiguration
+          algorithmName={selectedScript.name}
+          definitions={argumentDefinitions}
+          args={experimentForm.args}
+          onCancel={() => setConfigurationOpen(false)}
+          onApply={(args) => {
+            setExperimentForm((current) => ({ ...current, args }))
+            setConfigurationOpen(false)
+          }}
+        />
+      ) : null}
 
       <section className="panel-grid two-up">
         <article className="panel-card">

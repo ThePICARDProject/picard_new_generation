@@ -539,3 +539,36 @@ body {
     flex-direction: column;
   }
 }
+
+.argument-dialog {
+  color: var(--space-white);
+  background: #100e14;
+  width: min(48rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  overflow-y: auto;
+}
+
+.argument-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.argument-dialog .helper-text {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.argument-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1rem;
+}
+
+.argument-values dt {
+  color: var(--app-muted);
+  font-size: 0.85rem;
+}
+
+.argument-values dd {
+  margin: 0.25rem 0 0;
+}

@@ -1,5 +1,6 @@
 # experiments/tasks.py
 import subprocess
+import shlex
 import os
 from celery import shared_task
 from django.core.files.base import ContentFile
@@ -25,10 +26,11 @@ def run_db_script(experiment_id):
     spark_result_file = os.path.join(SHARED_DIR, unique_result_filename)
 
     try:
-        cmd = ['spark-submit', '--master', 'spark://spark-master:7077', script_path]
+        cmd = ['spark-submit', '--master', 'spark://spark-master:7077']
 
         if experiment.script.file_type == 'jar' and experiment.script.main_class:
             cmd.extend(['--class', experiment.script.main_class])
+        cmd.append(script_path)
         #Upload input
         if experiment.dataset and experiment.dataset.file:
             cmd.append(experiment.dataset.get_absolute_file_path())
@@ -36,6 +38,7 @@ def run_db_script(experiment_id):
         # 2. Pass the unique result file path to your Spark script
         # (Make sure your Spark script reads this argument to know where to save!)
         cmd.append(spark_result_file)
+        cmd.extend(shlex.split(experiment.args or ''))
 
         process = subprocess.Popen(
             cmd,
