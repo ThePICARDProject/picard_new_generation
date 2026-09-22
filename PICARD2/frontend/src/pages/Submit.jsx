@@ -1,4 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
+import ArgumentConfiguration from '../components/experiments/ArgumentConfiguration'
+import { defaultArguments, getArgumentDefinitions } from '../lib/argumentDefinitions'
 import LcarsLayout from '../components/layout/LcarsLayout'
 import { useAuth } from '../components/auth/AuthProvider'
 import { useSound } from '../components/audio/SoundProvider'
@@ -19,6 +21,10 @@ export default function Submit() {
   const [datasetForm, setDatasetForm] = useState({ accessLevel: 'private', file: null, name: '' })
   const [scriptForm, setScriptForm] = useState({ accessLevel: 'private', file: null, mainClass: '', name: '' })
   const [experimentForm, setExperimentForm] = useState({ datasetId: '', scriptId: '', args: '' })
+  const [configurationOpen, setConfigurationOpen] = useState(false)
+  const selectedScript = scripts.find((script) => script.id === experimentForm.scriptId)
+  const argumentDefinitions = getArgumentDefinitions(selectedScript)
+
   const [datasetSearch, setDatasetSearch] = useState('')
   const [scriptSearch, setScriptSearch] = useState('')
   const [feedback, setFeedback] = useState({ tone: '', text: '' })
@@ -87,11 +93,6 @@ export default function Submit() {
       return
     }
 
-    if (extension === 'jar' && !scriptForm.mainClass.trim()) {
-      setFeedback({ tone: 'error', text: 'A main class is required for JAR uploads.' })
-      return
-    }
-
     setBusyAction('script')
     setFeedback({ tone: '', text: '' })
 
@@ -111,7 +112,12 @@ export default function Submit() {
         }))
       }
       setScriptForm({ accessLevel: 'private', file: null, mainClass: '', name: '' })
-      setFeedback({ tone: 'success', text: 'Algorithm uploaded successfully.' })
+      setFeedback({
+        tone: 'success',
+        text: result.main_class
+          ? `Algorithm uploaded successfully. Main class: ${result.main_class}`
+          : 'Algorithm uploaded successfully.',
+      })
     } catch (error) {
       setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Algorithm upload failed.' })
     } finally {
@@ -256,12 +262,14 @@ export default function Submit() {
                 />
               </label>
               <label className="field">
-                <span>JAR main class</span>
+                <span>JAR main class override (optional)</span>
                 <input
                   type="text"
                   value={scriptForm.mainClass}
                   onChange={(event) => setScriptForm((current) => ({ ...current, mainClass: event.target.value }))}
-                  placeholder="Required for .jar uploads"
+                  placeholder="Detected automatically from the JAR"
+                  maxLength={255}
+                  aria-describedby="main-class-help"
                 />
               </label>
               <label className="field">
@@ -279,6 +287,7 @@ export default function Submit() {
               <span>Algorithm file</span>
               <input type="file" accept=".py,.jar" onChange={(event) => setScriptForm((current) => ({ ...current, file: event.target.files?.[0] || null }))} />
             </label>
+            <p className="helper-text" id="main-class-help">Leave the main class blank to detect it from the JAR. Enter an override only if needed.</p>
             <p className="helper-text">Supported formats: Python scripts and runnable Spark JARs only.</p>
             <div className="form-actions">
               <button type="submit" className="action-button" disabled={busyAction === 'script'}>
@@ -300,11 +309,9 @@ export default function Submit() {
                 value={experimentForm.scriptId}
                 onChange={(event) => {
                   const scriptId = event.target.value
-                  const script = scripts.find((candidate) => candidate.id === scriptId)
+                  const definitions = getArgumentDefinitions(scripts.find((script) => script.id === scriptId))
                   setExperimentForm((current) => ({
-                    ...current,
-                    scriptId,
-                    args: script?.recommended_args || '',
+                    ...current, scriptId, args: definitions ? defaultArguments(definitions) : '',
                   }))
                 }}
               >
@@ -330,8 +337,8 @@ export default function Submit() {
                 ))}
               </select>
             </label>
-            <label className="field" style={{ marginTop: '1rem' }}>
-              <span>Arguments{selectedAlgorithm?.arguments_required ? ' (Required)' : ''}</span>
+{!argumentDefinitions ? <label className="field" style={{ marginTop: '1rem' }}>
+              <span>Arguments (Optional)</span>
               <input
                 type="text"
                 value={experimentForm.args}
@@ -339,12 +346,25 @@ export default function Submit() {
                 placeholder={selectedAlgorithm?.recommended_args || 'Algorithm arguments'}
                 required={Boolean(selectedAlgorithm?.arguments_required)}
               />
-            </label>
+            </label> : null}
           </div>
-          {selectedAlgorithm?.is_codrift ? (
-            <p className="helper-text">
-              CoDRIFT order: numClasses numTrees impurity maxDepth maxBins percentLabeled k. Recommended: {selectedAlgorithm.recommended_args}.
-            </p>
+{argumentDefinitions ? (
+            <div className="argument-summary">
+              <div className="panel-heading-row">
+                <h3>Algorithm arguments</h3>
+                <button type="button" className="action-button secondary" onClick={() => setConfigurationOpen(true)}>
+                  Configure arguments
+                </button>
+              </div>
+              <dl className="argument-values">
+                {argumentDefinitions.map((parameter, index) => (
+                  <div key={parameter.name}>
+                    <dt>{parameter.label}</dt>
+                    <dd>{experimentForm.args.split(/\s+/)[index]}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           ) : null}
           <p className="helper-text">New experiments are created in a pending state. Queue or re-run them from the runs console.</p>
           <div className="form-actions">
@@ -354,6 +374,19 @@ export default function Submit() {
           </div>
         </form>
       </section>
+
+      {configurationOpen && argumentDefinitions ? (
+        <ArgumentConfiguration
+          algorithmName={selectedScript.name}
+          definitions={argumentDefinitions}
+          args={experimentForm.args}
+          onCancel={() => setConfigurationOpen(false)}
+          onApply={(args) => {
+            setExperimentForm((current) => ({ ...current, args }))
+            setConfigurationOpen(false)
+          }}
+        />
+      ) : null}
 
       <section className="panel-grid two-up">
         <article className="panel-card">

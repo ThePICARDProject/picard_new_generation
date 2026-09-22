@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from scripts.algorithms import get_algorithm_metadata
 from scripts.models import PRIVATE, PUBLIC, Script
+from scripts.jar_metadata import detect_main_class
 
 # 1. GET: List all experiments for the logged-in user
 @api_view(['GET'])
@@ -47,10 +48,23 @@ def upload_script(request):
     # User can optionally pass access_level in the request
     access = request.data.get('access_level', PRIVATE)
     display_name = request.data.get('name', '').strip() or file.name
-    main_class = request.data.get('main_class') # Will be None if not provided
+    main_class = (request.data.get('main_class') or '').strip()
 
     _, extension = os.path.splitext(file.name)
     file_type = extension.lstrip('.').lower()  # Remove the dot and normalize to lowercase
+
+    if file_type == Script.JAR and not main_class:
+        try:
+            main_class = detect_main_class(file)
+        except ValueError as error:
+            return JsonResponse({"error": str(error)}, status=400)
+        if not main_class:
+            return JsonResponse({
+                "error": "This JAR does not declare a Main-Class in its manifest. Enter a main class override and upload again.",
+            }, status=400)
+
+    if len(main_class or '') > 255:
+        return JsonResponse({"error": "The main class must be at most 255 characters."}, status=400)
 
     script = Script.objects.create(
         user=request.user,
@@ -60,7 +74,7 @@ def upload_script(request):
         access_level=access,
         main_class = main_class
     )
-    algorithm_metadata = get_algorithm_metadata(
+algorithm_metadata = get_algorithm_metadata(
         display_name=script.name,
         main_class=script.main_class,
         upload_name=file.name,
@@ -68,6 +82,7 @@ def upload_script(request):
     return JsonResponse({
         "script_id": script.id,
         "access_level": script.access_level,
+        "main_class": script.main_class,
         **algorithm_metadata,
     })
 

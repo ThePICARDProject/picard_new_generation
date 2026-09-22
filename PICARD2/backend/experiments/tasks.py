@@ -1,5 +1,6 @@
 # experiments/tasks.py
 import subprocess
+import shlex
 import os
 import shlex
 import shutil
@@ -36,7 +37,7 @@ def run_db_script(experiment_id):
     result_directory = Path(spark_result_file)
 
     try:
-        # Spark refuses to write to an existing output path, including one
+# Spark refuses to write to an existing output path, including one
         # left behind by a failed attempt.
         if result_directory.is_dir():
             shutil.rmtree(result_directory)
@@ -47,22 +48,13 @@ def run_db_script(experiment_id):
 
         if experiment.script.file_type == 'jar' and experiment.script.main_class:
             cmd.extend(['--class', experiment.script.main_class])
-
-        cmd.append(script_path) # ensure script path is appended after --class if jar
-
+        cmd.append(script_path)
         #Upload input
         if experiment.dataset and experiment.dataset.file:
             cmd.append(experiment.dataset.get_absolute_file_path())
 
-        # 2. Pass the unique result file path to your Spark script
-        # (Make sure your Spark script reads this argument to know where to save!)
-        cmd.extend([ # CoDRIFT expects the output location as two separate values, this may have to be tweaked in the future when restoring algorithm-agnosticism, this change is being made for the sake of getting a single (CoDRIFT) algorithm working. 
-            SHARED_DIR,
-            unique_result_filename
-        ])
-
-        cmd.extend(shlex.split(experiment.args)) # split the arg string stored in the database into seven separate arguments, which CoDRIFT expects.
-        # cmd.extend adds each value separately
+        cmd.append(spark_result_file)
+        cmd.extend(shlex.split(experiment.args or ''))
 
         process = subprocess.Popen(
             cmd,
