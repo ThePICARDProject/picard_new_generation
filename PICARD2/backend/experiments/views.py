@@ -207,6 +207,26 @@ def run_experiment(request, experiment_id):  # <-- New Method
             {"error": "Experiment execution service is unavailable. Please try again shortly."},
             status=503,
         )
+# POST: Cancel a running experiment
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_experiment(request, experiment_id):
+    try:
+        experiment = SparkExperiment.objects.get(id=experiment_id, user=request.user)
+    except SparkExperiment.DoesNotExist:
+        return JsonResponse({"error": "Experiment not found or access denied"}, status=404)
+
+    if experiment.status not in ['Pending', 'Queued', 'Running']:
+        return JsonResponse({"error": "Experiment is not currently running"}, status=400)
+
+    experiment.status = 'Cancelled'
+    experiment.save(update_fields=['status'])
+
+    return JsonResponse({
+        "experiment_id": experiment.id,
+        "status": "Cancelled",
+        "message": "Experiment cancelled successfully",
+    })
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

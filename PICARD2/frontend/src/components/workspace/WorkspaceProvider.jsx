@@ -158,6 +158,16 @@ export function WorkspaceProvider({ children }) {
     return payload
   }
 
+  async function cancelExperiment(experimentId) {
+    const payload = await apiRequest(`/experiments/${experimentId}/cancel/`, {
+      method: 'POST',
+      csrfToken,
+    })
+
+    await refreshExperiments()
+    return payload
+  }
+
   async function deleteExperiment(experimentId) {
     const payload = await apiRequest(`/experiments/${experimentId}/delete/`, {
       method: 'DELETE',
@@ -225,6 +235,7 @@ export function WorkspaceProvider({ children }) {
     createExperiment,
     datasets,
     deleteDataset,
+    cancelExperiment,
     deleteExperiment,
     deleteScript,
     downloadResultUrl: (path) => buildApiUrl(path),

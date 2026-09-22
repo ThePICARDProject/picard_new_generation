@@ -10,10 +10,16 @@ from pathlib import Path
 
 SHARED_DIR = os.environ.get('SPARK_SHARED_DIR', '/opt/spark/apps')
 
+def _is_cancelled(experiment_id):
+    return SparkExperiment.objects.filter(id=experiment_id, status='Cancelled').exists()
 
 @shared_task
 def run_db_script(experiment_id):
     experiment = SparkExperiment.objects.select_related('script', 'dataset').get(id=experiment_id)
+
+    if _is_cancelled(experiment_id):
+        return
+
     experiment.status = 'Running'
 
     # A re-run owns the same artifact names as the previous attempt. Remove
@@ -72,9 +78,24 @@ def run_db_script(experiment_id):
         )
 
         with open(output_path, 'a') as f:
-            for line in iter(process.stdout.readline, ''):
-                f.write(line)
-                f.flush()
+            while True:
+                if _is_cancelled(experiment_id):
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                    experiment.status = 'Cancelled'
+                    experiment.save(update_fields=['status'])
+                    return
+
+                line = process.stdout.readline()
+                if line:
+                    f.write(line)
+                    f.flush()
+                    continue
+                if process.poll() is not None:
+                    break
 
         process.wait()
         experiment.status = 'Success' if process.returncode == 0 else 'Failed'

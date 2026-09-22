@@ -8,6 +8,7 @@ export default function Experiments() {
   const { play } = useSound()
   const {
     deleteExperiment,
+    cancelExperiment,
     downloadResultUrl,
     experiments,
     loadExperimentDetail,
@@ -141,6 +142,30 @@ export default function Experiments() {
     }
   }
 
+  async function handleCancel(experimentId) {
+    if (!window.confirm('Cancel this running experiment?')) {
+      return
+    }
+
+    setBusyAction(`cancel-${experimentId}`)
+    setFeedback({ tone: '', text: '' })
+
+    try {
+      await play('alert')
+      await cancelExperiment(experimentId)
+      const detail = await loadExperimentDetail(experimentId)
+      setExperimentDetail(detail)
+      setFeedback({ tone: 'success', text: `Experiment ${experimentId} cancelled.` })
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Unable to cancel experiment.',
+      })
+    } finally {
+      setBusyAction('')
+    }
+  }
+
   return (
     <LcarsLayout>
       <section className="panel-card panel-card-accent">
@@ -219,6 +244,18 @@ export default function Experiments() {
                 >
                   {busyAction === `run-${experimentDetail.id}` ? 'Queueing...' : 'Run / Re-run'}
                 </button>
+
+              {['Pending', 'Queued', 'Running'].includes(experimentDetail.status) ? (
+                <button
+                  type="button"
+                  className="action-button danger"
+                  onClick={() => handleCancel(experimentDetail.id)}
+                  disabled={busyAction === `cancel-${experimentDetail.id}`}
+                >
+                  {busyAction === `cancel-${experimentDetail.id}` ? 'Cancelling...' : 'Cancel'}
+                </button>
+               ) : null}
+
                 {experimentDetail.has_result ? (
                   <a className="action-button secondary" href={downloadResultUrl(experimentDetail.result_url)}>
                     Download Result
