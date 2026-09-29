@@ -5,11 +5,11 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
-from scripts.algorithms import get_algorithm_metadata
+from scripts.algorithms import get_algorithm_metadata, read_algorithm_manifest
 from scripts.models import PRIVATE, PUBLIC, Script
 from scripts.jar_metadata import detect_main_class
 
-# 1. GET: List all experiments for the logged-in user
+# List algorithms the user owns or can access publicly, including their settings.
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_scripts(request):
@@ -20,10 +20,7 @@ def list_scripts(request):
 
     script_data = []
     for script in scripts:
-        algorithm_metadata = get_algorithm_metadata(
-            display_name=script.name,
-            main_class=script.main_class,
-        )
+        algorithm_metadata = get_algorithm_metadata(script)
         script_data.append({
             'id': script.id,
             'name': script.name,
@@ -53,6 +50,20 @@ def upload_script(request):
     _, extension = os.path.splitext(file.name)
     file_type = extension.lstrip('.').lower()  # Remove the dot and normalize to lowercase
 
+    if file_type not in (Script.PYTHON, Script.JAR):
+        return JsonResponse({'error': 'Only .py and .jar uploads are supported.'}, status=400)
+
+    # Validate the definition before saving either file or database record.
+    # The definition stays attached to this upload for all of its experiments.
+    algorithm_config = None
+    if 'algorithm_manifest' in request.data and 'algorithm_manifest' not in request.FILES:
+        return JsonResponse({'error': 'Upload the algorithm manifest as a JSON file.'}, status=400)
+    if 'algorithm_manifest' in request.FILES:
+        try:
+            algorithm_config = read_algorithm_manifest(request.FILES['algorithm_manifest'])
+        except ValueError as error:
+            return JsonResponse({'error': str(error)}, status=400)
+
     if file_type == Script.JAR and not main_class:
         try:
             main_class = detect_main_class(file)
@@ -72,18 +83,14 @@ def upload_script(request):
         file_type=file_type,
         file=file,
         access_level=access,
-        main_class = main_class
-    )
-algorithm_metadata = get_algorithm_metadata(
-        display_name=script.name,
-        main_class=script.main_class,
-        upload_name=file.name,
+        main_class=main_class,
+        algorithm_config=algorithm_config,
     )
     return JsonResponse({
         "script_id": script.id,
         "access_level": script.access_level,
         "main_class": script.main_class,
-        **algorithm_metadata,
+        **get_algorithm_metadata(script),
     })
 
 

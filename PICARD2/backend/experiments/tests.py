@@ -1,3 +1,5 @@
+import json
+import shlex
 import shutil
 import tempfile
 from pathlib import Path
@@ -6,6 +8,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, SimpleTestCase, override_settings
 from django.urls import reverse
 from kombu.exceptions import OperationalError
@@ -16,6 +19,9 @@ from scripts.models import Script
 
 from .models import SparkExperiment
 from .tasks import run_db_script
+
+
+EXAMPLES = Path(__file__).resolve().parents[1] / 'scripts' / 'manifests'
 
 
 class RunExperimentTests(TestCase):
@@ -119,6 +125,7 @@ class RunExperimentTests(TestCase):
             file_type=Script.JAR,
             file='files/scripts/codrift.jar',
             main_class='edu.fsu.driver.CoDRIFt',
+            algorithm_config=json.loads((EXAMPLES / 'codrift.json').read_text()),
         )
 
         response = self.client.post(
@@ -132,7 +139,7 @@ class RunExperimentTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('requires seven arguments', response.json()['error'])
+        self.assertIn('requires 7 arguments', response.json()['error'])
 
     def test_codrift_recommendation_is_exposed_and_accepted(self):
         codrift = Script.objects.create(
@@ -141,6 +148,7 @@ class RunExperimentTests(TestCase):
             file_type=Script.JAR,
             file='files/scripts/codrift.jar',
             main_class='edu.fsu.driver.CoDRIFt',
+            algorithm_config=json.loads((EXAMPLES / 'codrift.json').read_text()),
         )
 
         scripts_response = self.client.get(reverse('list_scripts'))
@@ -165,6 +173,78 @@ class RunExperimentTests(TestCase):
         experiment = SparkExperiment.objects.get(id=create_response.json()['experiment_id'])
         self.assertEqual(experiment.args, '2 10 gini 5 32 70 1')
 
+    @patch('experiments.views.run_db_script.delay')
+    def test_new_classifier_upload_to_queue_without_application_changes(self, delay):
+        # Register an unrelated algorithm through the same API the browser uses.
+        config = {'protocol': 'spark-classification-v1', 'parameters': [
+            {'name': 'title', 'type': 'string', 'default': "A user's model"},
+        ]}
+        response = self.client.post('/scripts/upload/', {
+            'script': SimpleUploadedFile('new_classifier.py', b'print("example")'),
+            'algorithm_manifest': SimpleUploadedFile('new_classifier.json', json.dumps(config).encode()),
+        }, format='multipart')
+        self.assertEqual(response.status_code, 200)
+        script_id = response.json()['script_id']
+        listed = next(script for script in self.client.get(reverse('list_scripts')).json() if script['id'] == script_id)
+        self.assertEqual(listed['algorithm_config'], config)
+        response = self.client.post(reverse('create_experiment'), {
+            'script_id': script_id, 'dataset_id': str(self.dataset.id), 'args': ["A user's model"],
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        experiment = SparkExperiment.objects.get(id=response.json()['experiment_id'])
+        self.assertEqual(shlex.split(experiment.args), ["A user's model"])
+        response = self.client.post(reverse('run_experiment', args=[experiment.id]))
+        self.assertEqual(response.status_code, 200)
+        delay.assert_called_once_with(experiment.id)
+
+    @patch('experiments.views.run_db_script.delay')
+    def test_saved_arguments_are_validated_before_queueing(self, delay):
+        self.script.algorithm_config = json.loads((EXAMPLES / 'supervisedmlrf.json').read_text())
+        self.script.save()
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 400)
+        delay.assert_not_called()
+        self.experiment.refresh_from_db()
+        self.assertEqual(self.experiment.status, 'Failed')
+
+    @patch('experiments.tasks.subprocess.Popen')
+    def test_classifier_results_are_imported_in_filename_order(self, popen):
+        self.script.algorithm_config = {'protocol': 'spark-classification-v1', 'parameters': []}
+        self.script.save()
+
+        def write_report(command, **kwargs):
+            # Act like an algorithm honoring the directory/name contract.
+            self.assertEqual(command[4], self.dataset.get_absolute_file_path())
+            directory = Path(command[5]) / command[6]
+            directory.mkdir()
+            (directory / 'part-00001').write_text('second\n')
+            (directory / 'part-00000').write_text('first\n')
+            (directory / '_SUCCESS').touch()
+            process = Mock(returncode=0)
+            process.stdout.readline.return_value = ''
+            return process
+
+        popen.side_effect = write_report
+        with patch('experiments.tasks.SHARED_DIR', self.media_root):
+            run_db_script(self.experiment.id)
+        self.experiment.refresh_from_db()
+        self.assertEqual(self.experiment.status, 'Success')
+        with self.experiment.result.open('rb') as result:
+            self.assertEqual(result.read(), b'first\nsecond\n')
+        self.assertFalse((Path(self.media_root) / f'results_{self.experiment.id}.txt').exists())
+
+    @patch('experiments.tasks.subprocess.Popen')
+    def test_classifier_without_a_report_is_failed(self, popen):
+        self.script.algorithm_config = {'protocol': 'spark-classification-v1', 'parameters': []}
+        self.script.save()
+        popen.return_value = Mock(returncode=0)
+        popen.return_value.stdout.readline.return_value = ''
+        with patch('experiments.tasks.SHARED_DIR', self.media_root):
+            run_db_script(self.experiment.id)
+        self.experiment.refresh_from_db()
+        self.assertEqual(self.experiment.status, 'Failed')
+        self.assertFalse(self.experiment.result.name)
+
 
 class SparkCommandTests(SimpleTestCase):
     def test_main_class_precedes_jar_and_quoted_arguments_are_forwarded(self):
@@ -183,6 +263,7 @@ class SparkCommandTests(SimpleTestCase):
         with TemporaryDirectory() as directory:
             experiment = Mock(id='demo', args='2 10 gini 5 32 70 1 "two words"')
             experiment.script.file_type = file_type
+            experiment.script.algorithm_config = None
             experiment.script.main_class = main_class
             experiment.script.get_absolute_file_path.return_value = f'/scripts/job.{file_type}'
             experiment.dataset.get_absolute_file_path.return_value = '/data/input.csv'

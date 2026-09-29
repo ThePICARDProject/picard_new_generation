@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import ArgumentConfiguration from '../components/experiments/ArgumentConfiguration'
-import { defaultArguments, getArgumentDefinitions } from '../lib/argumentDefinitions'
+import { argumentError, defaultArguments, getArgumentDefinitions } from '../lib/argumentDefinitions'
 import LcarsLayout from '../components/layout/LcarsLayout'
 import { useAuth } from '../components/auth/AuthProvider'
 import { useSound } from '../components/audio/SoundProvider'
@@ -19,7 +19,7 @@ export default function Submit() {
     uploadScript,
   } = useWorkspace()
   const [datasetForm, setDatasetForm] = useState({ accessLevel: 'private', file: null, name: '' })
-  const [scriptForm, setScriptForm] = useState({ accessLevel: 'private', file: null, mainClass: '', name: '' })
+  const [scriptForm, setScriptForm] = useState({ accessLevel: 'private', file: null, manifest: null, mainClass: '', name: '' })
   const [experimentForm, setExperimentForm] = useState({ datasetId: '', scriptId: '', args: '' })
   const [configurationOpen, setConfigurationOpen] = useState(false)
   const selectedScript = scripts.find((script) => script.id === experimentForm.scriptId)
@@ -46,11 +46,6 @@ export default function Submit() {
       return haystack.includes(deferredScriptSearch.trim().toLowerCase())
     })
   }, [deferredScriptSearch, scripts])
-
-  const selectedAlgorithm = useMemo(
-    () => scripts.find((script) => script.id === experimentForm.scriptId) || null,
-    [experimentForm.scriptId, scripts],
-  )
 
   async function handleDatasetUpload(event) {
     event.preventDefault()
@@ -81,6 +76,7 @@ export default function Submit() {
 
   async function handleScriptUpload(event) {
     event.preventDefault()
+    const form = event.currentTarget
 
     if (!scriptForm.file) {
       setFeedback({ tone: 'error', text: 'Select a Python or JAR file before uploading an algorithm.' })
@@ -103,15 +99,18 @@ export default function Submit() {
         file: scriptForm.file,
         mainClass: scriptForm.mainClass,
         name: scriptForm.name,
+        manifest: scriptForm.manifest,
       })
-      if (result.recommended_args) {
+      const definitions = getArgumentDefinitions(result)
+      if (definitions) {
         setExperimentForm((current) => ({
           ...current,
           scriptId: result.script_id,
-          args: result.recommended_args,
+          args: defaultArguments(definitions),
         }))
       }
-      setScriptForm({ accessLevel: 'private', file: null, mainClass: '', name: '' })
+      setScriptForm({ accessLevel: 'private', file: null, manifest: null, mainClass: '', name: '' })
+      form.reset()
       setFeedback({
         tone: 'success',
         text: result.main_class
@@ -133,9 +132,12 @@ export default function Submit() {
       return
     }
 
-    if (selectedAlgorithm?.arguments_required && !experimentForm.args.trim()) {
-      setFeedback({ tone: 'error', text: 'CoDRIFT arguments are required.' })
-      return
+    if (argumentDefinitions) {
+      const message = argumentError(argumentDefinitions, experimentForm.args)
+      if (message) {
+        setFeedback({ tone: 'error', text: message })
+        return
+      }
     }
 
     setBusyAction('experiment')
@@ -288,6 +290,11 @@ export default function Submit() {
               <input type="file" accept=".py,.jar" onChange={(event) => setScriptForm((current) => ({ ...current, file: event.target.files?.[0] || null }))} />
             </label>
             <p className="helper-text" id="main-class-help">Leave the main class blank to detect it from the JAR. Enter an override only if needed.</p>
+            <label className="field">
+              <span>Algorithm settings (JSON, optional)</span>
+              <input type="file" accept=".json,application/json" onChange={(event) => setScriptForm((current) => ({ ...current, manifest: event.target.files?.[0] || null }))} />
+            </label>
+            <p className="helper-text">For a classification algorithm, include its settings file to enable the argument form and standard dataset/result handling.</p>
             <p className="helper-text">Supported formats: Python scripts and runnable Spark JARs only.</p>
             <div className="form-actions">
               <button type="submit" className="action-button" disabled={busyAction === 'script'}>
@@ -337,18 +344,17 @@ export default function Submit() {
                 ))}
               </select>
             </label>
-{!argumentDefinitions ? <label className="field" style={{ marginTop: '1rem' }}>
+            {!argumentDefinitions ? <label className="field" style={{ marginTop: '1rem' }}>
               <span>Arguments (Optional)</span>
               <input
                 type="text"
                 value={experimentForm.args}
                 onChange={(event) => setExperimentForm((current) => ({ ...current, args: event.target.value }))}
-                placeholder={selectedAlgorithm?.recommended_args || 'Algorithm arguments'}
-                required={Boolean(selectedAlgorithm?.arguments_required)}
+                placeholder="Algorithm arguments"
               />
             </label> : null}
           </div>
-{argumentDefinitions ? (
+          {argumentDefinitions?.length ? (
             <div className="argument-summary">
               <div className="panel-heading-row">
                 <h3>Algorithm arguments</h3>
@@ -359,12 +365,15 @@ export default function Submit() {
               <dl className="argument-values">
                 {argumentDefinitions.map((parameter, index) => (
                   <div key={parameter.name}>
-                    <dt>{parameter.label}</dt>
-                    <dd>{experimentForm.args.split(/\s+/)[index]}</dd>
+                    <dt>{parameter.label || parameter.name}</dt>
+                    <dd>{experimentForm.args[index] || 'Not set'}</dd>
                   </div>
                 ))}
               </dl>
             </div>
+          ) : null}
+          {selectedScript?.algorithm_config?.input_description ? (
+            <p className="helper-text">Dataset requirements: {selectedScript.algorithm_config.input_description}</p>
           ) : null}
           <p className="helper-text">New experiments are created in a pending state. Queue or re-run them from the runs console.</p>
           <div className="form-actions">

@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 from zipfile import ZipFile
@@ -41,14 +42,17 @@ class JarMetadataTests(SimpleTestCase):
 
 
 class ScriptUploadTests(SimpleTestCase):
-    def upload(self, file, main_class=''):
-        request = APIRequestFactory().post('/scripts/upload/', {'script': file, 'main_class': main_class}, format='multipart')
+    def upload(self, file, main_class='', manifest=None):
+        data = {'script': file, 'main_class': main_class}
+        if manifest is not None:
+            data['algorithm_manifest'] = SimpleUploadedFile('algorithm.json', manifest)
+        request = APIRequestFactory().post('/scripts/upload/', data, format='multipart')
         force_authenticate(request, user=SimpleNamespace(is_authenticated=True))
         return upload_script(request)
 
     @patch('scripts.views.Script.objects.create')
     def test_detected_class_is_saved_and_file_is_intact(self, create):
-        create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='edu.fsu.driver.CoDRIFt')
+        create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='edu.fsu.driver.CoDRIFt', algorithm_config=None)
         upload = jar_upload('Main-Class: edu.fsu.driver.CoDRIFt\r\n\r\n')
         original = upload.read()
         upload.seek(0)
@@ -60,7 +64,7 @@ class ScriptUploadTests(SimpleTestCase):
 
     @patch('scripts.views.Script.objects.create')
     def test_override_takes_precedence(self, create):
-        create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='custom.Driver')
+        create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='custom.Driver', algorithm_config=None)
         response = self.upload(jar_upload('Main-Class: original.Driver\n'), ' custom.Driver ')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(create.call_args.kwargs['main_class'], 'custom.Driver')
@@ -73,11 +77,45 @@ class ScriptUploadTests(SimpleTestCase):
 
     @patch('scripts.views.Script.objects.create')
     def test_override_supports_jar_without_manifest(self, create):
-        create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='custom.Driver')
+        create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='custom.Driver', algorithm_config=None)
         self.assertEqual(self.upload(jar_upload(), 'custom.Driver').status_code, 200)
 
     @patch('scripts.views.Script.objects.create')
     def test_python_upload_needs_no_main_class(self, create):
-        create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='')
+        create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='', algorithm_config=None)
         self.assertEqual(self.upload(SimpleUploadedFile('job.py', b'print(1)')).status_code, 200)
         self.assertEqual(create.call_args.kwargs['main_class'], '')
+
+    @patch('scripts.views.Script.objects.create')
+    def test_manifest_is_saved_with_an_unfamiliar_jar(self, create):
+        config = {'protocol': 'spark-classification-v1', 'parameters': [
+            {'name': 'size', 'type': 'integer', 'min': 1, 'default': 3},
+        ]}
+        create.return_value = SimpleNamespace(
+            id='demo', access_level='private', main_class='example.NewClassifier', algorithm_config=config,
+        )
+        response = self.upload(
+            jar_upload('Main-Class: example.NewClassifier\r\n\r\n'),
+            manifest=json.dumps(config).encode(),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(create.call_args.kwargs['algorithm_config'], config)
+        self.assertEqual(json.loads(response.content)['algorithm_config'], config)
+
+    @patch('scripts.views.Script.objects.create')
+    def test_bad_manifest_or_unsupported_file_never_creates_a_script(self, create):
+        for manifest in [b'{', b'null', b'{"protocol": "unknown", "parameters": []}']:
+            response = self.upload(SimpleUploadedFile('job.py', b'print(1)'), manifest=manifest)
+            self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.upload(SimpleUploadedFile('job.txt', b'not a script')).status_code, 400)
+        create.assert_not_called()
+
+    @patch('scripts.views.Script.objects.create')
+    def test_manifest_sent_as_a_form_string_is_not_silently_discarded(self, create):
+        request = APIRequestFactory().post('/scripts/upload/', {
+            'script': SimpleUploadedFile('job.py', b'print(1)'),
+            'algorithm_manifest': '{}',
+        }, format='multipart')
+        force_authenticate(request, user=SimpleNamespace(is_authenticated=True))
+        self.assertEqual(upload_script(request).status_code, 400)
+        create.assert_not_called()
