@@ -100,10 +100,14 @@ export function WorkspaceProvider({ children }) {
     return payload
   }
 
-  async function uploadScript({ accessLevel, file, mainClass, name }) {
+  async function uploadScript({ accessLevel, file, mainClass, name, manifest }) {
     const formData = new FormData()
     formData.append('script', file)
     formData.append('access_level', accessLevel)
+
+    // Keep the binary and its settings in the same upload so they cannot be
+    // accidentally registered as two unrelated algorithms.
+    if (manifest) formData.append('algorithm_manifest', manifest)
 
     if (name.trim()) {
       formData.append('name', name.trim())
@@ -139,7 +143,7 @@ export function WorkspaceProvider({ children }) {
       body: {
         dataset_id: datasetId,
         script_id: scriptId,
-		args: args || '',
+        args: args || '',
       },
       csrfToken,
     })

@@ -281,6 +281,14 @@ def run_experiment(request, experiment_id):  # <-- New Method
                     status=409,
                 )
 
+            # Saved experiments may predate the manifest migration. Check them
+            # before queueing as well, and store the same canonical arguments
+            # used when comparing newly submitted experiments for duplicates.
+            args, argument_error = validate_algorithm_arguments(experiment.script, experiment.args)
+            if argument_error:
+                return JsonResponse({'error': argument_error}, status=400)
+            experiment.args = args
+
             # use helper method to identify any active duplicates
             duplicate = _find_active_duplicate(
                 user_id=request.user.pk,
@@ -303,7 +311,7 @@ def run_experiment(request, experiment_id):  # <-- New Method
 
             # else, the experiment is not already queued or running
             experiment.status = 'Queued'
-            experiment.save(update_fields=['status'])
+            experiment.save(update_fields=['status', 'args'])
 
             # The worker replaces stale output/result artifacts once it has
             # actually accepted the job. Until then, preserve the failed run.

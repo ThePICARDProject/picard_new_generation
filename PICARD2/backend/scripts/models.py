@@ -42,6 +42,10 @@ class Script(models.Model):
         default=PRIVATE
     )
     main_class = models.CharField(max_length=255, blank=True, null=True, help_text='e.g., com.example.SparkJob')
+    # Each upload carries its own settings. Adding an algorithm means supplying
+    # this JSON manifest; the form and runner do not need to know its name.
+    # NULL preserves the old command convention for uploads without a manifest.
+    algorithm_config = models.JSONField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
 
     # NEW: Helper to get the absolute path on the backend server

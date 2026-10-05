@@ -1,0 +1,65 @@
+{
+  "protocol": "spark-classification-v1",
+  "input_description": "CSV with a header, numeric feature columns, and the class label in the last column. The supplied JAR samples labels 0 and 1. Use fully labelled data.",
+  "parameters": [
+    {
+      "name": "numClasses",
+      "label": "Number of classes",
+      "type": "integer",
+      "default": 2,
+      "min": 2,
+      "max": 2147483647
+    },
+    {
+      "name": "numTrees",
+      "label": "Number of trees",
+      "type": "integer",
+      "default": 10,
+      "min": 1,
+      "max": 2147483647
+    },
+    {
+      "name": "impurity",
+      "label": "Impurity measure",
+      "type": "choice",
+      "default": "gini",
+      "choices": [
+        "gini",
+        "entropy"
+      ]
+    },
+    {
+      "name": "maxDepth",
+      "label": "Maximum tree depth",
+      "type": "integer",
+      "default": 5,
+      "min": 0,
+      "max": 30
+    },
+    {
+      "name": "maxBins",
+      "label": "Maximum bins",
+      "type": "integer",
+      "default": 32,
+      "min": 2,
+      "max": 2147483647
+    },
+    {
+      "name": "percentLabeled",
+      "label": "Labelled data (%)",
+      "type": "number",
+      "default": 70,
+      "exclusiveMin": 0,
+      "max": 100
+    },
+    {
+      "name": "k",
+      "label": "Partition factor (k)",
+      "type": "integer",
+      "default": 1,
+      "min": 1,
+      "max": 1073741823,
+      "description": "CoDRIFT doubles this value to set the partition count."
+    }
+  ]
+}
