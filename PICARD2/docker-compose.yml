@@ -80,6 +80,10 @@ services:
       - ./backend/media:/app/media:ro #Read only for datasets.
       - ./spark-apps:/opt/spark/apps # Official image uses /opt/spark/
     command: /opt/spark/sbin/../bin/spark-class org.apache.spark.deploy.master.Master
+    networks:
+      default:
+        aliases:
+          - master
 
 
   spark-worker:
