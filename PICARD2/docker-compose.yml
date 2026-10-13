@@ -33,9 +33,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+  # Note: The ${VARIABLE:-default} syntax reads the selected environment file and uses the fallback if the variable is missing or empty.
   celery_worker:
     build: ./backend
-    command: celery -A backend_config worker --concurrency=1 --loglevel=info
+    command: celery -A backend_config worker --concurrency=${CELERY_CONCURRENCY:-1} --loglevel=info
     volumes:
       - ./backend:/app
       - ./spark-apps:/opt/spark/apps:rw
@@ -43,16 +44,20 @@ services:
       - ./backend/.env
     environment:
       - SPARK_SHARED_DIR=/opt/spark/apps
+      - SPARK_DRIVER_MEMORY=${SPARK_DRIVER_MEMORY:-1g}
+      - SPARK_EXECUTOR_MEMORY=${SPARK_EXECUTOR_MEMORY:-1g}
+      - SPARK_EXECUTOR_CORES=${SPARK_EXECUTOR_CORES:-1}
+      - SPARK_MAX_CORES=${SPARK_MAX_CORES:-2}
     depends_on:
       - db
       - redis
       - backend
-    # We keep resources low since it's just "managing" the Spark service
+    # This container runs Celery and the Spark driver.
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          cpus: "${CELERY_CPU_LIMIT:-2}"
+          memory: "${CELERY_MEMORY_LIMIT:-3G}"
   # 3. The Message Broker (Required for Celery)
   redis:
     image: redis:alpine
@@ -92,8 +97,8 @@ services:
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_CORES=2
-      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-2G}
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
     ports:
       - "8081:8081"
