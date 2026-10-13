@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import shlex
+import os
 
 from scripts.algorithms import CLASSIFICATION_PROTOCOL, validate_algorithm_arguments
 
@@ -13,7 +14,15 @@ def build_spark_command(script, dataset_path, result_path, arguments):
     if error:
         raise ValueError(error)
 
-    cmd = ['spark-submit', '--master', 'spark://spark-master:7077']
+    cmd = [
+        'spark-submit',
+        '--master', 'spark://spark-master:7077',
+        '--deploy-mode', 'client',
+        '--driver-memory', os.environ.get('SPARK_DRIVER_MEMORY', '1g'),
+        '--executor-memory', os.environ.get('SPARK_EXECUTOR_MEMORY', '1g'),
+        '--executor-cores', os.environ.get('SPARK_EXECUTOR_CORES', '1'),
+        '--total-executor-cores', os.environ.get('SPARK_MAX_CORES', '2'),
+    ]
     if script.file_type == 'jar' and script.main_class:
         cmd.extend(['--class', script.main_class])
     cmd.append(script.get_absolute_file_path())
