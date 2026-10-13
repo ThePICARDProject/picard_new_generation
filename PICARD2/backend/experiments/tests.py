@@ -1,14 +1,3 @@
-<<<<<<< HEAD
-import shutil
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
-from tempfile import TemporaryDirectory
-
-from django.contrib.auth.models import User
-from django.core.files.base import ContentFile
-from django.test import SimpleTestCase, TestCase, override_settings
-=======
 import json
 import shlex
 import shutil
@@ -21,7 +10,6 @@ from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, SimpleTestCase, override_settings
->>>>>>> 48f30fea00502885aae855842f15440bdc9e93a0
 from django.urls import reverse
 from kombu.exceptions import OperationalError
 from rest_framework.test import APIClient
@@ -184,8 +172,6 @@ class RunExperimentTests(TestCase):
         self.assertEqual(create_response.status_code, 201)
         experiment = SparkExperiment.objects.get(id=create_response.json()['experiment_id'])
         self.assertEqual(experiment.args, '2 10 gini 5 32 70 1')
-<<<<<<< HEAD
-=======
 
     @patch('experiments.views.run_db_script.delay')
     def test_new_classifier_upload_to_queue_without_application_changes(self, delay):
@@ -258,7 +244,6 @@ class RunExperimentTests(TestCase):
         self.experiment.refresh_from_db()
         self.assertEqual(self.experiment.status, 'Failed')
         self.assertFalse(self.experiment.result.name)
->>>>>>> 48f30fea00502885aae855842f15440bdc9e93a0
 
 
 class SparkCommandTests(SimpleTestCase):

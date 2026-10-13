@@ -83,27 +83,14 @@ def upload_script(request):
         file_type=file_type,
         file=file,
         access_level=access,
-<<<<<<< HEAD
-        main_class = main_class
-    )
-    algorithm_metadata = get_algorithm_metadata(
-        display_name=script.name,
-        main_class=script.main_class,
-        upload_name=file.name,
-=======
         main_class=main_class,
         algorithm_config=algorithm_config,
->>>>>>> 48f30fea00502885aae855842f15440bdc9e93a0
     )
     return JsonResponse({
         "script_id": script.id,
         "access_level": script.access_level,
         "main_class": script.main_class,
-<<<<<<< HEAD
-        **algorithm_metadata,
-=======
         **get_algorithm_metadata(script),
->>>>>>> 48f30fea00502885aae855842f15440bdc9e93a0
     })
 
 

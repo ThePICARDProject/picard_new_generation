@@ -52,11 +52,7 @@ class ScriptUploadTests(SimpleTestCase):
 
     @patch('scripts.views.Script.objects.create')
     def test_detected_class_is_saved_and_file_is_intact(self, create):
-<<<<<<< HEAD
-        create.return_value = SimpleNamespace(id='demo', name='algorithm.jar', access_level='private', main_class='edu.fsu.driver.CoDRIFt')
-=======
         create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='edu.fsu.driver.CoDRIFt', algorithm_config=None)
->>>>>>> 48f30fea00502885aae855842f15440bdc9e93a0
         upload = jar_upload('Main-Class: edu.fsu.driver.CoDRIFt\r\n\r\n')
         original = upload.read()
         upload.seek(0)
@@ -68,11 +64,7 @@ class ScriptUploadTests(SimpleTestCase):
 
     @patch('scripts.views.Script.objects.create')
     def test_override_takes_precedence(self, create):
-<<<<<<< HEAD
-        create.return_value = SimpleNamespace(id='demo', name='algorithm.jar', access_level='private', main_class='custom.Driver')
-=======
         create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='custom.Driver', algorithm_config=None)
->>>>>>> 48f30fea00502885aae855842f15440bdc9e93a0
         response = self.upload(jar_upload('Main-Class: original.Driver\n'), ' custom.Driver ')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(create.call_args.kwargs['main_class'], 'custom.Driver')
@@ -85,20 +77,12 @@ class ScriptUploadTests(SimpleTestCase):
 
     @patch('scripts.views.Script.objects.create')
     def test_override_supports_jar_without_manifest(self, create):
-<<<<<<< HEAD
-        create.return_value = SimpleNamespace(id='demo', name='algorithm.jar', access_level='private', main_class='custom.Driver')
-=======
         create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='custom.Driver', algorithm_config=None)
->>>>>>> 48f30fea00502885aae855842f15440bdc9e93a0
         self.assertEqual(self.upload(jar_upload(), 'custom.Driver').status_code, 200)
 
     @patch('scripts.views.Script.objects.create')
     def test_python_upload_needs_no_main_class(self, create):
-<<<<<<< HEAD
-        create.return_value = SimpleNamespace(id='demo', name='algorithm.jar', access_level='private', main_class='')
-=======
         create.return_value = SimpleNamespace(id='demo', access_level='private', main_class='', algorithm_config=None)
->>>>>>> 48f30fea00502885aae855842f15440bdc9e93a0
         self.assertEqual(self.upload(SimpleUploadedFile('job.py', b'print(1)')).status_code, 200)
         self.assertEqual(create.call_args.kwargs['main_class'], '')
 
