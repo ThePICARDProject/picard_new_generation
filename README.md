@@ -10,7 +10,7 @@ The PICARD Docker Compose system is already running on the PICARD backend machin
 
 You will need Git, Docker, and Docker Compose. Docker Desktop includes Compose.
 
-1. Clone the repository and enter this directory.
+1. Clone the repository and enter the `PICARD2/` directory.
 
 2. Create your local backend configuration:
 
@@ -31,7 +31,7 @@ You will need Git, Docker, and Docker Compose. Docker Desktop includes Compose.
 4. Build and start the application:
 
    ```bash
-   docker compose up --build
+   docker compose --env-file backend/.env up --build
    ```
 
 The first build can take a few minutes while the backend and Spark images install their dependencies. Django applies database migrations as the backend starts.
@@ -39,14 +39,14 @@ The first build can take a few minutes while the backend and Spark images instal
 Once the services are ready, open:
 
 - Application: <http://localhost:3000>
-- Django API: <http://localhost:5000>
+- Django API: `${BACKEND_LOCAL_URL}` from `backend/.env`
 - Spark master UI: <http://localhost:8080>
 - Spark worker UI: <http://localhost:8081>
 
 Stop the stack with `Ctrl+C`, followed by:
 
 ```bash
-docker compose down
+docker compose --env-file backend/.env down
 ```
 
 ## Working in the repository

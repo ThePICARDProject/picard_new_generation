@@ -17,7 +17,7 @@ npm install
 npm run dev
 ```
 
-Create a `.env` file from `.env.example` if your backend is not running at `http://localhost:5000`.
+Set `BACKEND_LOCAL_URL` and `BACKEND_PORT` in `backend/.env`. Vite uses the URL for its development proxy.
 
 ## Build
 
@@ -37,15 +37,19 @@ npm run build
 
 The frontend starts GitHub sign-in by redirecting the browser to the Django backend at `/auth/github/login/`.
 
-Required frontend env:
+Optional frontend override:
 
 ```bash
-VITE_API_BASE_URL=http://localhost:5000
+VITE_API_BASE_URL=
 ```
+
+By default, API requests use the Vite proxy. Set `VITE_API_BASE_URL` only if you want the browser to call a backend URL directly.
 
 Required backend env:
 
 ```bash
+BACKEND_LOCAL_URL=http://localhost:5001
+BACKEND_PORT=5001
 FRONTEND_LOCAL_URL=http://localhost:3000
 FRONTEND_REMOTE_URL=
 GITHUB_OAUTH_LOCAL_CLIENT_ID=
@@ -54,7 +58,7 @@ GITHUB_OAUTH_REMOTE_CLIENT_ID=
 GITHUB_OAUTH_REMOTE_CLIENT_SECRET=
 ```
 
-For local development, the GitHub OAuth app callback URL should be `http://localhost:5000/auth/github/callback/`.
+For local development, the GitHub OAuth app callback URL should be `${BACKEND_LOCAL_URL}/auth/github/callback/`.
 
 ## Main Structure
 
