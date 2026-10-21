@@ -1,9 +1,14 @@
 import requests
 import os
 import time
+from pathlib import Path
+from dotenv import load_dotenv
 
-# Set your local or production endpoint
-base_url = "http://localhost:5000"
+load_dotenv(Path(__file__).resolve().parents[1] / '.env')
+base_url = os.environ.get('BACKEND_LOCAL_URL')
+if not base_url:
+    raise RuntimeError("BACKEND_LOCAL_URL must be set in backend/.env or the environment.")
+base_url = base_url.rstrip('/')
 
 # Use a Session object to persist cookies (like sessionid and csrftoken)
 session = requests.Session()
