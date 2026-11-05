@@ -1,0 +1,12 @@
+{
+  "description": "Hyperparameter grid search configuration for SupervisedMLRF",
+  "manifest": "PICARD2/backend/scripts/manifests/supervisedmlrf.json",
+  "parameters": {
+    "numClasses": [2],
+    "numTrees": [10, 25, 50],
+    "impurity": ["gini", "entropy"],
+    "maxDepth": [3, 5, 10],
+    "maxBins": [32, 64],
+    "percentLabeled": [70]
+  }
+}

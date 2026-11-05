@@ -1,0 +1,8 @@
+{
+  "numClasses": "2",
+  "numTrees": "15",
+  "impurity": "gini",
+  "maxDepth": "6",
+  "maxBins": "32",
+  "percentLabeled": "70"
+}

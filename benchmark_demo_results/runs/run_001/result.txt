@@ -1,0 +1,9 @@
+=== Model Evaluation Report ===
+Accuracy: 0.86
+Precision: 0.8497
+Recall: 0.8531
+F1-Score: 0.8514
+Trees: 5
+Impurity: gini
+MaxDepth: 3
+ExecutionTime_s: 0.101

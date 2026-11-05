@@ -1,0 +1,13 @@
+{
+  "description": "Hyperparameter grid search configuration for CoDRIFt",
+  "manifest": "PICARD2/backend/scripts/manifests/codrift.json",
+  "parameters": {
+    "numClasses": [2],
+    "numTrees": [10, 20, 50],
+    "impurity": ["gini", "entropy"],
+    "maxDepth": [3, 5, 8],
+    "maxBins": [32],
+    "percentLabeled": [50, 70],
+    "k": [1, 2]
+  }
+}

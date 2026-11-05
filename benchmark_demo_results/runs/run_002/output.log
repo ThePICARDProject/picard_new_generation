@@ -1,0 +1,17 @@
+============================================================
+DEMO CLASSIFIER (spark-classification-v1)
+Dataset:         examples/sample_dataset.csv
+Output Target:   benchmark_demo_results\runs\run_002\spark_out
+Hyperparameters: 2 5 gini 6 32 70
+============================================================
+
+--- Training & Evaluation Log ---
+Loaded dataset from: examples/sample_dataset.csv
+Random Forest built with 5 trees, maxDepth=6, impurity=gini
+Accuracy = 0.875
+Precision = 0.8645
+Recall: 0.868
+F1-score: 0.8662
+Time taken: 0.1s
+
+[SUCCESS] Results written to benchmark_demo_results\runs\run_002\spark_out\part-00000

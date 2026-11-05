@@ -1,0 +1,17 @@
+============================================================
+DEMO CLASSIFIER (spark-classification-v1)
+Dataset:         examples/sample_dataset.csv
+Output Target:   benchmark_demo_results\runs\run_003\spark_out
+Hyperparameters: 2 5 entropy 3 32 70
+============================================================
+
+--- Training & Evaluation Log ---
+Loaded dataset from: examples/sample_dataset.csv
+Random Forest built with 5 trees, maxDepth=3, impurity=entropy
+Accuracy = 0.855
+Precision = 0.8447
+Recall: 0.8482
+F1-score: 0.8464
+Time taken: 0.1s
+
+[SUCCESS] Results written to benchmark_demo_results\runs\run_003\spark_out\part-00000

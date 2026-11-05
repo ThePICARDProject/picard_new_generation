@@ -73,4 +73,24 @@ npm run lint
 npm run build
 ```
 
+## Hyperparameter Grid Search & Benchmarking
+
+PICARD includes an automated grid search utility (`grid_search.sh`, `grid_search.ps1`, and `grid_search.py`) for exploring hyperparameters across algorithms and benchmarking results:
+
+```bash
+# On Linux / macOS / Git Bash:
+./grid_search.sh --manifest PICARD2/backend/scripts/manifests/codrift.json \
+  -p numTrees=10,20,50 -p impurity=gini,entropy --dry-run
+
+# On Windows (native PowerShell):
+.\grid_search.ps1 -Manifest PICARD2\backend\scripts\manifests\codrift.json `
+  -Param "numTrees=10,20,50", "impurity=gini,entropy" -DryRun
+
+# Cross-platform via Python:
+python grid_search.py --manifest PICARD2/backend/scripts/manifests/codrift.json \
+  -p numTrees=10,20,50 -p impurity=gini,entropy --dry-run
+```
+
+For complete instructions, execution backends (API, local Spark, Docker), and benchmark reporting details, see the [Hyperparameter Grid Search Guide](GRID_SEARCH_GUIDE.md).
+
 For architecture notes, team practices, and the rest of the project documentation, visit the [PICARD onboarding page](https://thepicardproject.github.io/Onboarding-Page/).

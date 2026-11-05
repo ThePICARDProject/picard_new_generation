@@ -14,3 +14,5 @@ PICARD2/backend/.env
 PICARD2/.env.dev
 PIACRD2/.env.prod
 PICARD2/backend/media
+scratch/
+benchmark_results_*/

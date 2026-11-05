@@ -1,0 +1,9 @@
+run_id,status,duration_sec,numClasses,numTrees,impurity,maxDepth,maxBins,percentLabeled,accuracy,executiontime_s,f1,f1_score,maxdepth,precision,recall,time_taken_s,trees,output_log,result_file
+run_001,Success,0.179,2,5,gini,3,32,70,0.86,0.101,0.8514,0.8514,3.0,0.8497,0.8531,0.101,5.0,benchmark_demo_results\runs\run_001\output.log,benchmark_demo_results\runs\run_001\result.txt
+run_002,Success,0.205,2,5,gini,6,32,70,0.875,0.1,0.8662,0.8662,6.0,0.8645,0.868,0.1,5.0,benchmark_demo_results\runs\run_002\output.log,benchmark_demo_results\runs\run_002\result.txt
+run_003,Success,0.178,2,5,entropy,3,32,70,0.855,0.1,0.8464,0.8464,3.0,0.8447,0.8482,0.1,5.0,benchmark_demo_results\runs\run_003\output.log,benchmark_demo_results\runs\run_003\result.txt
+run_004,Success,0.194,2,5,entropy,6,32,70,0.87,0.101,0.8613,0.8613,6.0,0.8596,0.863,0.101,5.0,benchmark_demo_results\runs\run_004\output.log,benchmark_demo_results\runs\run_004\result.txt
+run_005,Success,0.282,2,15,gini,3,32,70,0.88,0.2,0.8712,0.8712,3.0,0.8694,0.873,0.2,15.0,benchmark_demo_results\runs\run_005\output.log,benchmark_demo_results\runs\run_005\result.txt
+run_006,Success,0.277,2,15,gini,6,32,70,0.895,0.2,0.886,0.886,6.0,0.8843,0.8878,0.2,15.0,benchmark_demo_results\runs\run_006\output.log,benchmark_demo_results\runs\run_006\result.txt
+run_007,Success,0.299,2,15,entropy,3,32,70,0.875,0.201,0.8662,0.8662,3.0,0.8645,0.868,0.201,15.0,benchmark_demo_results\runs\run_007\output.log,benchmark_demo_results\runs\run_007\result.txt
+run_008,Success,0.279,2,15,entropy,6,32,70,0.89,0.201,0.8811,0.8811,6.0,0.8793,0.8829,0.201,15.0,benchmark_demo_results\runs\run_008\output.log,benchmark_demo_results\runs\run_008\result.txt

@@ -1,0 +1,8 @@
+{
+  "numClasses": "2",
+  "numTrees": "5",
+  "impurity": "entropy",
+  "maxDepth": "6",
+  "maxBins": "32",
+  "percentLabeled": "70"
+}

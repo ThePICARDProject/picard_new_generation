@@ -1,0 +1,248 @@
+{
+  "manifest": "PICARD2/backend/scripts/manifests/supervisedmlrf.json",
+  "total_runs": 8,
+  "successful_runs": 8,
+  "failed_runs": 0,
+  "primary_metric": "accuracy",
+  "best_run": {
+    "run_id": "run_006",
+    "params": {
+      "numClasses": "2",
+      "numTrees": "15",
+      "impurity": "gini",
+      "maxDepth": "6",
+      "maxBins": "32",
+      "percentLabeled": "70"
+    },
+    "metrics": {
+      "accuracy": 0.895,
+      "precision": 0.8843,
+      "recall": 0.8878,
+      "f1": 0.886,
+      "time_taken_s": 0.2,
+      "f1_score": 0.886,
+      "trees": 15.0,
+      "maxdepth": 6.0,
+      "executiontime_s": 0.2
+    },
+    "duration_sec": 0.277
+  },
+  "runs": [
+    {
+      "run_id": "run_001",
+      "status": "Success",
+      "duration_sec": 0.179,
+      "params": {
+        "numClasses": "2",
+        "numTrees": "5",
+        "impurity": "gini",
+        "maxDepth": "3",
+        "maxBins": "32",
+        "percentLabeled": "70"
+      },
+      "args_string": "2 5 gini 3 32 70",
+      "output_log": "benchmark_demo_results\\runs\\run_001\\output.log",
+      "result_file": "benchmark_demo_results\\runs\\run_001\\result.txt",
+      "metrics": {
+        "accuracy": 0.86,
+        "precision": 0.8497,
+        "recall": 0.8531,
+        "f1": 0.8514,
+        "time_taken_s": 0.101,
+        "f1_score": 0.8514,
+        "trees": 5.0,
+        "maxdepth": 3.0,
+        "executiontime_s": 0.101
+      }
+    },
+    {
+      "run_id": "run_002",
+      "status": "Success",
+      "duration_sec": 0.205,
+      "params": {
+        "numClasses": "2",
+        "numTrees": "5",
+        "impurity": "gini",
+        "maxDepth": "6",
+        "maxBins": "32",
+        "percentLabeled": "70"
+      },
+      "args_string": "2 5 gini 6 32 70",
+      "output_log": "benchmark_demo_results\\runs\\run_002\\output.log",
+      "result_file": "benchmark_demo_results\\runs\\run_002\\result.txt",
+      "metrics": {
+        "accuracy": 0.875,
+        "precision": 0.8645,
+        "recall": 0.868,
+        "f1": 0.8662,
+        "time_taken_s": 0.1,
+        "f1_score": 0.8662,
+        "trees": 5.0,
+        "maxdepth": 6.0,
+        "executiontime_s": 0.1
+      }
+    },
+    {
+      "run_id": "run_003",
+      "status": "Success",
+      "duration_sec": 0.178,
+      "params": {
+        "numClasses": "2",
+        "numTrees": "5",
+        "impurity": "entropy",
+        "maxDepth": "3",
+        "maxBins": "32",
+        "percentLabeled": "70"
+      },
+      "args_string": "2 5 entropy 3 32 70",
+      "output_log": "benchmark_demo_results\\runs\\run_003\\output.log",
+      "result_file": "benchmark_demo_results\\runs\\run_003\\result.txt",
+      "metrics": {
+        "accuracy": 0.855,
+        "precision": 0.8447,
+        "recall": 0.8482,
+        "f1": 0.8464,
+        "time_taken_s": 0.1,
+        "f1_score": 0.8464,
+        "trees": 5.0,
+        "maxdepth": 3.0,
+        "executiontime_s": 0.1
+      }
+    },
+    {
+      "run_id": "run_004",
+      "status": "Success",
+      "duration_sec": 0.194,
+      "params": {
+        "numClasses": "2",
+        "numTrees": "5",
+        "impurity": "entropy",
+        "maxDepth": "6",
+        "maxBins": "32",
+        "percentLabeled": "70"
+      },
+      "args_string": "2 5 entropy 6 32 70",
+      "output_log": "benchmark_demo_results\\runs\\run_004\\output.log",
+      "result_file": "benchmark_demo_results\\runs\\run_004\\result.txt",
+      "metrics": {
+        "accuracy": 0.87,
+        "precision": 0.8596,
+        "recall": 0.863,
+        "f1": 0.8613,
+        "time_taken_s": 0.101,
+        "f1_score": 0.8613,
+        "trees": 5.0,
+        "maxdepth": 6.0,
+        "executiontime_s": 0.101
+      }
+    },
+    {
+      "run_id": "run_005",
+      "status": "Success",
+      "duration_sec": 0.282,
+      "params": {
+        "numClasses": "2",
+        "numTrees": "15",
+        "impurity": "gini",
+        "maxDepth": "3",
+        "maxBins": "32",
+        "percentLabeled": "70"
+      },
+      "args_string": "2 15 gini 3 32 70",
+      "output_log": "benchmark_demo_results\\runs\\run_005\\output.log",
+      "result_file": "benchmark_demo_results\\runs\\run_005\\result.txt",
+      "metrics": {
+        "accuracy": 0.88,
+        "precision": 0.8694,
+        "recall": 0.873,
+        "f1": 0.8712,
+        "time_taken_s": 0.2,
+        "f1_score": 0.8712,
+        "trees": 15.0,
+        "maxdepth": 3.0,
+        "executiontime_s": 0.2
+      }
+    },
+    {
+      "run_id": "run_006",
+      "status": "Success",
+      "duration_sec": 0.277,
+      "params": {
+        "numClasses": "2",
+        "numTrees": "15",
+        "impurity": "gini",
+        "maxDepth": "6",
+        "maxBins": "32",
+        "percentLabeled": "70"
+      },
+      "args_string": "2 15 gini 6 32 70",
+      "output_log": "benchmark_demo_results\\runs\\run_006\\output.log",
+      "result_file": "benchmark_demo_results\\runs\\run_006\\result.txt",
+      "metrics": {
+        "accuracy": 0.895,
+        "precision": 0.8843,
+        "recall": 0.8878,
+        "f1": 0.886,
+        "time_taken_s": 0.2,
+        "f1_score": 0.886,
+        "trees": 15.0,
+        "maxdepth": 6.0,
+        "executiontime_s": 0.2
+      }
+    },
+    {
+      "run_id": "run_007",
+      "status": "Success",
+      "duration_sec": 0.299,
+      "params": {
+        "numClasses": "2",
+        "numTrees": "15",
+        "impurity": "entropy",
+        "maxDepth": "3",
+        "maxBins": "32",
+        "percentLabeled": "70"
+      },
+      "args_string": "2 15 entropy 3 32 70",
+      "output_log": "benchmark_demo_results\\runs\\run_007\\output.log",
+      "result_file": "benchmark_demo_results\\runs\\run_007\\result.txt",
+      "metrics": {
+        "accuracy": 0.875,
+        "precision": 0.8645,
+        "recall": 0.868,
+        "f1": 0.8662,
+        "time_taken_s": 0.201,
+        "f1_score": 0.8662,
+        "trees": 15.0,
+        "maxdepth": 3.0,
+        "executiontime_s": 0.201
+      }
+    },
+    {
+      "run_id": "run_008",
+      "status": "Success",
+      "duration_sec": 0.279,
+      "params": {
+        "numClasses": "2",
+        "numTrees": "15",
+        "impurity": "entropy",
+        "maxDepth": "6",
+        "maxBins": "32",
+        "percentLabeled": "70"
+      },
+      "args_string": "2 15 entropy 6 32 70",
+      "output_log": "benchmark_demo_results\\runs\\run_008\\output.log",
+      "result_file": "benchmark_demo_results\\runs\\run_008\\result.txt",
+      "metrics": {
+        "accuracy": 0.89,
+        "precision": 0.8793,
+        "recall": 0.8829,
+        "f1": 0.8811,
+        "time_taken_s": 0.201,
+        "f1_score": 0.8811,
+        "trees": 15.0,
+        "maxdepth": 6.0,
+        "executiontime_s": 0.201
+      }
+    }
+  ]
+}

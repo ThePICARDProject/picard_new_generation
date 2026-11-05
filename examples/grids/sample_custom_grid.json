@@ -1,0 +1,7 @@
+{
+  "description": "Minimal sample grid overriding only a few hyperparameters; remaining parameters use manifest defaults",
+  "parameters": {
+    "numTrees": [5, 10],
+    "impurity": ["gini", "entropy"]
+  }
+}
