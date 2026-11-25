@@ -2,6 +2,7 @@ import json
 import shlex
 import shutil
 import tempfile
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, Mock, patch
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock, Mock, patch
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import TestCase, SimpleTestCase, override_settings
 from django.urls import reverse
 from kombu.exceptions import OperationalError
@@ -58,6 +60,10 @@ class RunExperimentTests(TestCase):
         self.client.force_authenticate(self.user)
         self.url = reverse('run_experiment', args=[self.experiment.id])
 
+    def queue(self):
+        # The worker only claims Queued rows, as the run endpoints leave them.
+        SparkExperiment.objects.filter(pk=self.experiment.pk).update(status='Queued')
+
     @patch('experiments.views.run_db_script.delay')
     def test_rerun_is_queued_without_discarding_artifacts(self, delay):
         response = self.client.post(self.url)
@@ -105,6 +111,7 @@ class RunExperimentTests(TestCase):
         process.returncode = 1
         popen.return_value = process
 
+        self.queue()
         with patch('experiments.tasks.SHARED_DIR', self.media_root):
             run_db_script(self.experiment.id)
 
@@ -228,6 +235,7 @@ class RunExperimentTests(TestCase):
             return process
 
         popen.side_effect = write_report
+        self.queue()
         with patch('experiments.tasks.SHARED_DIR', self.media_root):
             run_db_script(self.experiment.id)
         self.experiment.refresh_from_db()
@@ -242,6 +250,7 @@ class RunExperimentTests(TestCase):
         self.script.save()
         popen.return_value = Mock(returncode=0)
         popen.return_value.stdout.readline.return_value = ''
+        self.queue()
         with patch('experiments.tasks.SHARED_DIR', self.media_root):
             run_db_script(self.experiment.id)
         self.experiment.refresh_from_db()
@@ -283,3 +292,93 @@ class SparkCommandTests(SimpleTestCase):
                 str(Path(directory) / 'results_demo.txt'), '2', '10', 'gini', '5', '32', '70', '1', 'two words',
             ])
             self.assertEqual(experiment.status, 'Success')
+
+
+class PipelineSafetyTests(TestCase):
+    def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.media_root)
+        self.media_override.enable()
+        self.addCleanup(self.media_override.disable)
+        self.addCleanup(shutil.rmtree, self.media_root)
+        self.user = User.objects.create_user(username='safety-user')
+        self.script = Script.objects.create(
+            user=self.user, name='algorithm.py', file_type=Script.PYTHON, file='files/scripts/algorithm.py',
+        )
+        self.dataset = CSVDataset.objects.create(user=self.user, name='d.csv', file='files/datasets/d.csv')
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def make(self, status):
+        return SparkExperiment.objects.create(
+            user=self.user, script=self.script, dataset=self.dataset, status=status,
+        )
+
+    def run_worker(self, experiment, popen_side_effect=None):
+        process = Mock(returncode=0)
+        process.stdout.readline.return_value = ''
+        with patch('experiments.tasks.SHARED_DIR', self.media_root), \
+                patch('experiments.tasks.subprocess.Popen', return_value=process,
+                      side_effect=popen_side_effect) as popen:
+            run_db_script(experiment.id)
+        return popen
+
+    def test_worker_skips_rows_that_are_not_queued(self):
+        for status in ('Cancelled', 'Running', 'Success', 'Failed', 'Pending'):
+            with self.subTest(status=status):
+                experiment = self.make(status)
+                popen = self.run_worker(experiment)
+                popen.assert_not_called()
+                experiment.refresh_from_db()
+                self.assertEqual(experiment.status, status)
+
+    def test_worker_ignores_missing_rows(self):
+        experiment = self.make('Queued')
+        experiment.delete()
+        self.run_worker(experiment).assert_not_called()
+
+    def test_row_deleted_mid_run_is_not_recreated(self):
+        experiment = self.make('Queued')
+
+        def delete_then_finish(command, **kwargs):
+            SparkExperiment.objects.filter(pk=experiment.pk).delete()
+            process = Mock(returncode=0)
+            process.stdout.readline.return_value = ''
+            return process
+
+        self.run_worker(experiment, delete_then_finish)
+        self.assertFalse(SparkExperiment.objects.filter(pk=experiment.pk).exists())
+        self.assertFalse((Path(self.media_root) / 'files' / 'output' / f'{experiment.id}.txt').exists())
+
+    def test_running_experiment_cannot_be_deleted(self):
+        experiment = self.make('Running')
+        response = self.client.delete(reverse('delete_experiment', args=[experiment.id]))
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(SparkExperiment.objects.filter(pk=experiment.pk).exists())
+        finished = self.make('Failed')
+        response = self.client.delete(reverse('delete_experiment', args=[finished.id]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_rerun_is_published_after_commit(self):
+        experiment = self.make('Failed')
+        seen = []
+        with patch('experiments.views.run_db_script.delay',
+                   side_effect=lambda pk: seen.append(SparkExperiment.objects.get(pk=pk).status)):
+            response = self.client.post(reverse('run_experiment', args=[experiment.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(seen, ['Queued'])
+
+    def test_reconcile_lists_by_default_and_fails_on_request(self):
+        stuck = self.make('Running')
+        SparkExperiment.objects.filter(pk=stuck.pk).update(created_at=stuck.created_at.replace(year=2000))
+        fresh = self.make('Queued')
+        out = StringIO()
+        call_command('reconcile_experiments', stdout=out)
+        self.assertIn(str(stuck.id), out.getvalue())
+        self.assertNotIn(str(fresh.id), out.getvalue())
+        stuck.refresh_from_db()
+        self.assertEqual(stuck.status, 'Running')
+        call_command('reconcile_experiments', '--fail', stdout=StringIO())
+        stuck.refresh_from_db()
+        fresh.refresh_from_db()
+        self.assertEqual((stuck.status, fresh.status), ('Failed', 'Queued'))

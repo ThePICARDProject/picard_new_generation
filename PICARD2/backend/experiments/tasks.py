@@ -1,4 +1,4 @@
-import subprocess
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -12,12 +12,35 @@ from .models import SparkExperiment
 
 
 SHARED_DIR = os.environ.get('SPARK_SHARED_DIR', '/opt/spark/apps')
+logger = logging.getLogger(__name__)
+
+
+def _save_fields(experiment, fields):
+    # A plain save() would INSERT the row again if it was deleted while the
+    # job ran. An UPDATE changes nothing in that case, so it stays deleted.
+    values = {field: getattr(experiment, field) for field in fields}
+    if SparkExperiment.objects.filter(pk=experiment.pk).update(**values):
+        return True
+    logger.info('Experiment %s was deleted while running; discarding its files.', experiment.pk)
+    for field in (experiment.output, experiment.result):
+        if field:
+            field.delete(save=False)
+    return False
 
 
 @shared_task
 def run_db_script(experiment_id):
-    experiment = SparkExperiment.objects.select_related('script', 'dataset').get(id=experiment_id)
-    experiment.status = 'Running'
+    # Claim the run atomically. Only a Queued row moves to Running, so a run
+    # that was cancelled, deleted, already started, or already finished is
+    # never submitted to Spark, including when Celery delivers a task twice.
+    claimed = SparkExperiment.objects.filter(pk=experiment_id, status='Queued').update(status='Running')
+    if not claimed:
+        logger.info('Experiment %s is not queued; skipping.', experiment_id)
+        return
+    try:
+        experiment = SparkExperiment.objects.select_related('script', 'dataset').get(id=experiment_id)
+    except SparkExperiment.DoesNotExist:
+        return
 
     # Replace old artifacts only after the worker accepts the run. A failed
     # attempt to contact Celery must not erase the previous run's report.
@@ -26,7 +49,8 @@ def run_db_script(experiment_id):
     if experiment.result:
         experiment.result.delete(save=False)
     experiment.output.save(f'{experiment.id}.txt', ContentFile(''), save=False)
-    experiment.save()
+    if not _save_fields(experiment, ['output', 'result']):
+        return
 
     output_path = experiment.get_absolute_output_path()
     result_directory = Path(SHARED_DIR) / f'results_{experiment.id}.txt'
@@ -84,4 +108,4 @@ def run_db_script(experiment_id):
             with open(output_path, 'a') as output:
                 output.write(f'\nResult import error: {error}')
         finally:
-            experiment.save()
+            _save_fields(experiment, ['status', 'result'])

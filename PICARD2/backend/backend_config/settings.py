@@ -24,6 +24,14 @@ DATABASES = {
     }
 }
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/0")
+# Acknowledge a task only after it finishes and reserve one task at a time, so
+# a worker that dies before finishing a task lets the broker deliver it again.
+# The worker's Queued -> Running claim makes a repeated delivery harmless.
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# Upper limit on the runs one parameter sweep may create.
+SWEEP_MAX_EXPERIMENTS = int(os.environ.get('SWEEP_MAX_EXPERIMENTS', '100'))
 
 def _split_csv_env(name, default=''):
     raw_value = os.environ.get(name, default)

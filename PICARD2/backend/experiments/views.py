@@ -261,9 +261,8 @@ def run_script(request, script_id):
 @permission_classes([IsAuthenticated])
 def run_experiment(request, experiment_id):  # <-- New Method
     try:
-        # Keep the state change and broker publish together. If the execution
-        # service is unavailable, the transaction rolls back so a failed run
-        # does not become stuck in a misleading Queued state.
+        # Commit the Queued state before publishing the task. The worker only
+        # claims Queued rows, so it must never see the pre-commit status.
         with transaction.atomic():
 
             # acquiring the user lock before the experiment lock:
@@ -310,12 +309,18 @@ def run_experiment(request, experiment_id):  # <-- New Method
                 )
 
             # else, the experiment is not already queued or running
+            previous_status = experiment.status
             experiment.status = 'Queued'
             experiment.save(update_fields=['status', 'args'])
 
-            # The worker replaces stale output/result artifacts once it has
-            # actually accepted the job. Until then, preserve the failed run.
+        # The worker replaces stale output/result artifacts once it has
+        # actually accepted the job. Until then, preserve the previous run.
+        try:
             run_db_script.delay(experiment.id)
+        except OperationalError:
+            # Never leave a Queued row without a task.
+            SparkExperiment.objects.filter(pk=experiment.pk, status='Queued').update(status=previous_status)
+            raise
 
         return JsonResponse(
             {"experiment_id": experiment.id, "status": "Queued", "message": "Experiment added to queue"})
@@ -359,11 +364,12 @@ def delete_experiment(request, experiment_id):
     except SparkExperiment.DoesNotExist:
         return JsonResponse({"error": "Experiment not found or access denied"}, status=404)
 
-    # result_path = _get_result_path(experiment)
-    # experiment.delete()
-
-    # if os.path.exists(result_path):
-    #     os.remove(result_path)
+    if experiment.status == 'Running':
+        # Spark jobs are not killed, so deleting the row would only orphan the job.
+        return JsonResponse(
+            {"error": "This experiment is running. Wait for it to finish before deleting it."},
+            status=409,
+        )
 
     if experiment.output:
         experiment.output.delete(save=False)
