@@ -8,6 +8,7 @@ to Django, while /sweeps/... stays free for the React pages.
 
 from collections import Counter, defaultdict
 import hashlib
+import logging
 import shlex
 
 from django.conf import settings
@@ -17,7 +18,6 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
-from kombu.exceptions import OperationalError
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
@@ -30,6 +30,7 @@ from .views import _has_experiment_result
 
 
 STATUSES = ('Pending', 'Queued', 'Running', 'Success', 'Failed', 'Cancelled')
+logger = logging.getLogger(__name__)
 UNDISPATCHED_NOTE = 'Not dispatched: the execution service was unavailable. Run this experiment again to retry.'
 
 
@@ -234,8 +235,10 @@ def _create_sweep(request):
         for experiment in experiments:
             run_db_script.delay(experiment.id)
             dispatched += 1
-    except OperationalError:
-        # Never leave a Queued row with no task behind it.
+    except Exception:
+        # Usually kombu's OperationalError, but any failure here must still
+        # leave no Queued row without a task behind it.
+        logger.exception('Sweep %s: dispatch failed after %d of %d runs.', batch.id, dispatched, len(experiments))
         for experiment in experiments[dispatched:]:
             if SparkExperiment.objects.filter(pk=experiment.pk, status='Queued').update(status='Failed'):
                 experiment.output.save(f'{experiment.id}.txt', ContentFile(UNDISPATCHED_NOTE), save=False)
