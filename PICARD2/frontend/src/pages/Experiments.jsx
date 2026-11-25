@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import LcarsLayout from '../components/layout/LcarsLayout'
 import StatusBadge from '../components/common/StatusBadge'
 import { useSound } from '../components/audio/SoundProvider'
@@ -150,7 +151,7 @@ export default function Experiments() {
     <LcarsLayout>
       <section className="panel-card panel-card-accent">
         <p className="lcars-eyebrow">Runs Console</p>
-        <h1>Experiment monitoring and result inspection</h1>
+        <div className="panel-heading-row"><h1>Experiments</h1><Link className="action-button" to="/experiment/new">+ Create experiment</Link></div>
         <p className="lead-copy">
           Queue pending experiments, re-run completed jobs, and watch live output while Spark writes back logs.
         </p>

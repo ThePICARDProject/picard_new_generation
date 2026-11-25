@@ -4,6 +4,7 @@ import StatusBadge from '../components/common/StatusBadge'
 import { useAuth } from '../components/auth/AuthProvider'
 import { useSound } from '../components/audio/SoundProvider'
 import { useWorkspace } from '../components/workspace/WorkspaceProvider'
+import { SWEEPS_DEMO_MODE } from '../features/sweeps/config'
 
 export default function Landing() {
   const { isAuthenticated, isLoading, login, user } = useAuth()
@@ -18,6 +19,23 @@ export default function Landing() {
   }
 
   const recentExperiments = experiments.slice(0, 5)
+
+  if (SWEEPS_DEMO_MODE) return (
+    <LcarsLayout>
+      <section className="panel-card panel-card-accent">
+        <p className="lcars-eyebrow">Mission Control · Local demo</p>
+        <h1>PICARD command deck</h1>
+        <p className="lead-copy">Create and monitor Spark machine-learning experiments with sample CoDRIFT and SupervisedMLRF configurations. This interactive demo runs entirely in your browser.</p>
+        <div className="hero-actions"><Link className="action-button" to="/experiments">Open Experiments</Link><Link className="action-button secondary" to="/experiment/new">Create an Experiment</Link></div>
+      </section>
+      <section className="panel-card">
+        <p className="lcars-eyebrow">Your demonstration flight plan</p>
+        <h2>Configure, compare, and stay in control</h2>
+        <ol><li>Select an algorithm and sample dataset, then configure your parameters.</li><li>Launch one run, or enable multiple parameter combinations in the configuration.</li><li>Watch runs execute one at a time and compare their mock accuracy.</li><li>Cancel waiting runs while the current run finishes. Refresh to see your saved experiment.</li></ol>
+        <p className="helper-text">No sign-in or backend required. Sample assets and simulated results only; no Spark jobs are submitted.</p>
+      </section>
+    </LcarsLayout>
+  )
 
   return (
     <LcarsLayout>

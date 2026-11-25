@@ -4,6 +4,8 @@ import StatusBadge from '../common/StatusBadge'
 import { useAuth } from '../auth/AuthProvider'
 import { useSound } from '../audio/SoundProvider'
 import { useWorkspace } from '../workspace/WorkspaceProvider'
+import { SWEEPS_DEMO_MODE } from '../../features/sweeps/config'
+import { useSweeps } from '../../features/sweeps/SweepContext'
 
 function padMetric(value, width = 4) {
   return String(value).padStart(width, '0')
@@ -37,7 +39,16 @@ export default function LcarsLayout({ children }) {
   const location = useLocation()
   const navigate = useNavigate()
   const { authError, isAuthenticated, login, logout, user } = useAuth()
-  const { isRefreshing, summary, workspaceError } = useWorkspace()
+  const { isRefreshing, summary: workspaceSummary, workspaceError } = useWorkspace()
+  const { sweeps, algorithms, datasets } = useSweeps()
+  const summary = useMemo(() => {
+    if (!SWEEPS_DEMO_MODE) return workspaceSummary
+    const runs = sweeps.flatMap((sweep) => sweep.experiments)
+    return { ...workspaceSummary, datasetCount: datasets.length, scriptCount: algorithms.length,
+      experimentCount: runs.length, activeCount: runs.filter((run) => ['Pending', 'Queued', 'Running'].includes(run.status)).length,
+      runningCount: runs.filter((run) => run.status === 'Running').length,
+      queuedCount: runs.filter((run) => run.status === 'Queued').length }
+  }, [sweeps, algorithms, datasets, workspaceSummary])
   const { play, soundEnabled, toggleSound } = useSound()
   const [showTopButton, setShowTopButton] = useState(false)
 
@@ -56,10 +67,17 @@ export default function LcarsLayout({ children }) {
       return [
         { label: 'HOME', to: '/' },
         { label: 'SUBMIT', to: '/submit' },
-        { label: 'RUNS', to: '/experiments' },
+        { label: 'EXPERIMENTS', to: '/experiments' },
         { label: 'PROFILE', to: '/profile' },
       ]
     }
+
+    if (SWEEPS_DEMO_MODE) return [
+      { label: 'HOME', to: '/' },
+      { label: 'EXPERIMENTS', to: '/experiments' },
+      { label: 'NEW EXPERIMENT', to: '/experiment/new' },
+      { label: 'ABOUT', to: '/about' },
+    ]
 
     return [
       { label: 'SIGN IN', action: () => login() },
@@ -104,7 +122,7 @@ export default function LcarsLayout({ children }) {
     }, 'alert')
   }
 
-  const sessionLabel = isAuthenticated
+  const sessionLabel = SWEEPS_DEMO_MODE ? 'Authenticated' : isAuthenticated
     ? user?.name || user?.github_login || user?.username || 'Authenticated User'
     : 'GitHub authentication required'
 
@@ -112,7 +130,7 @@ export default function LcarsLayout({ children }) {
 
   return (
     <>
-      <section className="wrap-standard app-shell" id="column-3">
+      <section className={`wrap-standard app-shell${SWEEPS_DEMO_MODE || location.pathname.startsWith('/sweeps') || location.pathname.startsWith('/experiment/') ? ' sweep-shell' : ''}`} id="column-3">
         <div className="wrap">
           <div className="left-frame-top">
             <button type="button" onClick={() => triggerAction(() => navigate('/'))} className="panel-1-button">
@@ -122,7 +140,7 @@ export default function LcarsLayout({ children }) {
           </div>
           <div className="right-frame-top">
             <div className="banner">
-              PICARD LCARS • {isAuthenticated ? 'SESSION ACTIVE' : 'AUTH REQUIRED'}
+              PICARD LCARS • {SWEEPS_DEMO_MODE ? 'LOCAL DEMO' : isAuthenticated ? 'SESSION ACTIVE' : 'AUTH REQUIRED'}
             </div>
             <div className="data-cascade-button-group">
               <div className="data-cascade-wrapper" id="default" aria-hidden="true">
@@ -138,7 +156,7 @@ export default function LcarsLayout({ children }) {
               </div>
               <nav aria-label="Primary">
                 {navigationItems.map((item) => {
-                  const isActive = item.to === location.pathname
+                  const isActive = item.to === location.pathname || (item.to === '/experiments' && ((location.pathname.startsWith('/experiment/') && location.pathname !== '/experiment/new') || location.pathname.startsWith('/sweeps')))
                   return (
                     <button
                       key={item.label}
@@ -173,7 +191,7 @@ export default function LcarsLayout({ children }) {
               <span className="hop">screen</span> top
             </button>
             <div>
-              <div className="panel-3 lcars-panel-stat"><span>mode</span><strong>{isAuthenticated ? 'mission' : 'guest'}</strong></div>
+              <div className="panel-3 lcars-panel-stat"><span>mode</span><strong>{SWEEPS_DEMO_MODE ? 'demo' : isAuthenticated ? 'mission' : 'guest'}</strong></div>
               <div className="panel-4 lcars-panel-stat"><span>datasets</span><strong>{padMetric(summary.datasetCount, 2)}</strong></div>
               <div className="panel-5 lcars-panel-stat lcars-panel-compact"><span>scripts</span><strong>{padMetric(summary.scriptCount, 2)}</strong></div>
               <div className="panel-6 lcars-panel-stat"><span>runs</span><strong>{padMetric(summary.experimentCount, 2)}</strong></div>
@@ -183,7 +201,7 @@ export default function LcarsLayout({ children }) {
                 <p className="lcars-eyebrow">Session</p>
                 <h3 className="lcars-sidebar-title">{sessionLabel}</h3>
                 <p className="lcars-sidebar-copy">
-                  {isAuthenticated
+                  {SWEEPS_DEMO_MODE ? 'Create experiments and compare results. Demo data stays in this browser and no Spark jobs are submitted.' : isAuthenticated
                     ? 'Use the command panels to upload assets, assemble experiments, and inspect Spark results.'
                     : 'Sign in with GitHub to access submission workflows, experiment runs, and personal resource libraries.'}
                 </p>
@@ -197,17 +215,23 @@ export default function LcarsLayout({ children }) {
                   <button type="button" onClick={() => triggerAction(() => toggleSound(), 'soft')}>
                     {soundEnabled ? 'Mute Audio' : 'Enable Audio'}
                   </button>
-                  {isAuthenticated ? (
+                  {SWEEPS_DEMO_MODE ? (
+                    <button type="button" onClick={() => triggerAction(() => navigate('/experiments'))}>Open Experiments</button>
+                  ) : isAuthenticated ? (
                     <button type="button" onClick={() => triggerAction(() => navigate('/about'))}>About</button>
                   ) : (
                     <button type="button" onClick={() => triggerAction(() => login())}>GitHub Sign In</button>
                   )}
-                  {isAuthenticated ? (
+                  {SWEEPS_DEMO_MODE ? (
+                    <button type="button" onClick={() => triggerAction(() => navigate('/experiment/new'))}>Create Experiment</button>
+                  ) : isAuthenticated ? (
                     <button type="button" onClick={() => triggerAction(() => navigate('/submit'))}>Open Submit</button>
                   ) : (
                     <button type="button" onClick={() => triggerAction(() => navigate('/about'))}>About PICARD</button>
                   )}
-                  {isAuthenticated ? (
+                  {SWEEPS_DEMO_MODE ? (
+                    <button type="button" onClick={() => triggerAction(() => navigate('/about'))}>About PICARD</button>
+                  ) : isAuthenticated ? (
                     <button type="button" onClick={handleLogout}>Sign Out</button>
                   ) : (
                     <button type="button" onClick={() => triggerAction(() => navigate('/about'))}>Access Policy</button>

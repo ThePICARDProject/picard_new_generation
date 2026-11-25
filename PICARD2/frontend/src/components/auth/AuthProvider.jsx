@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { apiRequest, buildApiUrl } from '../../lib/api'
+import { SWEEPS_DEMO_MODE } from '../../features/sweeps/config'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!SWEEPS_DEMO_MODE)
   const [user, setUser] = useState(null)
   const [authError, setAuthError] = useState('')
   const [csrfToken, setCsrfToken] = useState('')
@@ -37,6 +38,9 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
+    // Demo stays a guest and never reads a backend session or real workspace.
+    // This branch is removed from production builds by Vite's DEV guard.
+    if (SWEEPS_DEMO_MODE) return
     const params = new URLSearchParams(window.location.search)
     const authStatus = params.get('auth')
     const reason = params.get('reason')

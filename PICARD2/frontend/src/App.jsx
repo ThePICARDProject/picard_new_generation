@@ -4,6 +4,10 @@ import Submit from './pages/Submit'
 import Experiments from './pages/Experiments'
 import Profile from './pages/Profile'
 import About from './pages/About'
+import Sweeps from './pages/Sweeps'
+import SweepCreate from './pages/SweepCreate'
+import SweepDetail from './pages/SweepDetail'
+import { SWEEPS_DEMO_MODE } from './features/sweeps/config'
 import { useAuth } from './components/auth/AuthProvider'
 
 function RequireAuth({ children }) {
@@ -25,6 +29,11 @@ function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/about" element={<About />} />
+      <Route path="/experiment/new" element={SWEEPS_DEMO_MODE ? <SweepCreate /> : <RequireAuth><SweepCreate /></RequireAuth>} />
+      <Route path="/experiment/:id" element={SWEEPS_DEMO_MODE ? <SweepDetail /> : <RequireAuth><SweepDetail /></RequireAuth>} />
+      <Route path="/sweeps" element={SWEEPS_DEMO_MODE ? <Sweeps /> : <RequireAuth><Sweeps /></RequireAuth>} />
+      <Route path="/sweeps/new" element={SWEEPS_DEMO_MODE ? <SweepCreate /> : <RequireAuth><SweepCreate /></RequireAuth>} />
+      <Route path="/sweeps/:id" element={SWEEPS_DEMO_MODE ? <SweepDetail /> : <RequireAuth><SweepDetail /></RequireAuth>} />
       <Route
         path="/submit"
         element={
@@ -36,7 +45,7 @@ function App() {
       <Route
         path="/experiments"
         element={
-          <RequireAuth>
+          SWEEPS_DEMO_MODE ? <Sweeps /> : <RequireAuth>
             <Experiments />
           </RequireAuth>
         }

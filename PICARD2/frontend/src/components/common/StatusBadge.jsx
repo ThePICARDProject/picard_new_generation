@@ -4,6 +4,8 @@ const STATUS_VARIANTS = {
   Running: 'status-badge running',
   Success: 'status-badge success',
   Failed: 'status-badge failed',
+  Cancelled: 'status-badge cancelled',
+  'Completed with failures': 'status-badge failed',
 }
 
 export default function StatusBadge({ status }) {

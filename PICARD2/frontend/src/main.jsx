@@ -7,6 +7,7 @@ import App from './App.jsx'
 import { SoundProvider } from './components/audio/SoundProvider'
 import { AuthProvider } from './components/auth/AuthProvider'
 import { WorkspaceProvider } from './components/workspace/WorkspaceProvider'
+import SweepProvider from './features/sweeps/SweepProvider'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -14,7 +15,7 @@ createRoot(document.getElementById('root')).render(
       <SoundProvider>
         <AuthProvider>
           <WorkspaceProvider>
-            <App />
+            <SweepProvider><App /></SweepProvider>
           </WorkspaceProvider>
         </AuthProvider>
       </SoundProvider>
