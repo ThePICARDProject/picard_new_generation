@@ -57,6 +57,8 @@ def _serialize_experiment_summary(experiment):
         "created_at": experiment.created_at,
         "has_result": has_result,
         "result_url": f"/experiments/{experiment.id}/result/" if has_result else '', # update to use new has_result bool
+        "batch_id": experiment.batch_id,
+        "sweep_index": experiment.sweep_index,
     }
 
 def _find_active_duplicate(*, user_id, script_id, dataset_id, args):

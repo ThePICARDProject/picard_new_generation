@@ -47,10 +47,11 @@ class Command(BaseCommand):
             statuses = ['Queued']
         cutoff = timezone.now() - timedelta(minutes=options['older_than'])
         rows = list(SparkExperiment.objects.filter(status__in=statuses, created_at__lte=cutoff)
-                    .order_by('created_at').only('id', 'status', 'created_at', 'output'))
+                    .order_by('created_at').only('id', 'status', 'created_at', 'batch_id', 'output'))
 
         for row in rows:
-            self.stdout.write(f'{row.id} {row.status:<8} created {row.created_at:%Y-%m-%d %H:%M}')
+            batch = f' sweep={row.batch_id}' if row.batch_id else ''
+            self.stdout.write(f'{row.id} {row.status:<8} created {row.created_at:%Y-%m-%d %H:%M}{batch}')
         if not rows:
             self.stdout.write('No matching experiments.')
             return
