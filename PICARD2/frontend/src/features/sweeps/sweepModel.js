@@ -1,6 +1,8 @@
 import { argumentError, defaultArguments } from '../../lib/argumentDefinitions.js'
 
-export const MAX_EXPERIMENTS = 250
+// Matches the backend default (SWEEP_MAX_EXPERIMENTS). The server's limit is
+// authoritative; this only gives early feedback in the form.
+export const MAX_EXPERIMENTS = 100
 export const RUN_STATUSES = ['Pending', 'Queued', 'Running', 'Success', 'Failed', 'Cancelled']
 
 export function initialConfiguration(definitions) {
@@ -80,47 +82,23 @@ export function buildSweepPlan(definitions, configuration, { varyParameters = tr
 }
 
 export function sweepCounts(sweep) {
-  const counts = Object.fromEntries(RUN_STATUSES.map((status) => [status, 0]))
-  for (const experiment of sweep.experiments) counts[experiment.status]++
-  const total = sweep.experiments.length
+  // Prefer the server's counts; fall back to counting a loaded run table.
+  const counts = Object.fromEntries(RUN_STATUSES.map((status) => [status, sweep.counts?.[status] ?? 0]))
+  if (!sweep.counts) for (const experiment of sweep.experiments ?? []) counts[experiment.status]++
+  const total = RUN_STATUSES.reduce((sum, status) => sum + counts[status], 0)
   const completed = counts.Success + counts.Failed
   const settled = completed + counts.Cancelled
   return { ...counts, total, completed, settled, progress: total ? Math.round(settled / total * 100) : 0 }
 }
 
-// Precedence matches the Data Model and Run Lifecycle specification exactly.
+// Same precedence as the backend's batch_status(). The server's value wins
+// when present; this keeps the UI consistent for locally derived counts.
 export function sweepStatus(sweep) {
+  if (sweep.status) return sweep.status
   const counts = sweepCounts(sweep)
   if (counts.Running) return 'Running'
   if (counts.Queued || counts.Pending) return 'Queued'
   if (sweep.cancel_requested && counts.Cancelled) return 'Cancelled'
   if (counts.total && counts.Success === counts.total) return 'Success'
   return 'Completed with failures'
-}
-
-export function cancelSweep(sweep) {
-  return { ...sweep, cancel_requested: true, experiments: sweep.experiments.map((run) => run.status === 'Queued'
-    ? { ...run, status: 'Cancelled', output: 'Cancelled before execution. This run will not start.' } : run) }
-}
-
-// One simulated worker across ALL sweeps, with no background catch-up on refresh.
-export function advanceSweeps(sweeps, now) {
-  const runningSweep = sweeps.find((sweep) => sweep.experiments.some((run) => run.status === 'Running'))
-  if (runningSweep) {
-    const run = runningSweep.experiments.find((item) => item.status === 'Running')
-    if (now - run.started_at < run.duration_ms) return sweeps
-    const failed = run.sweep_index % 5 === 4
-    return sweeps.map((sweep) => sweep.id !== runningSweep.id ? sweep : { ...sweep, experiments: sweep.experiments.map((item) => item.id !== run.id ? item : {
-      ...item, status: failed ? 'Failed' : 'Success', finished_at: now,
-      metrics: failed ? null : { accuracy: Number((0.81 + (run.sweep_index * 17 % 160) / 1000).toFixed(3)), duration_seconds: run.duration_ms / 1000 },
-      output: failed ? 'Simulated Spark failure: executor could not complete this configuration. Other experiments will continue.' : 'Simulated Spark job completed. Mock evaluation metrics are ready.',
-    }) })
-  }
-  const nextSweep = [...sweeps].reverse().find((sweep) => !sweep.cancel_requested && sweep.experiments.some((run) => run.status === 'Queued'))
-  if (!nextSweep) return sweeps
-  const next = nextSweep.experiments.find((run) => run.status === 'Queued')
-  return sweeps.map((sweep) => sweep.id !== nextSweep.id ? sweep : { ...sweep, experiments: sweep.experiments.map((run) => run.id !== next.id ? run : {
-    ...run, status: 'Running', started_at: now, duration_ms: 6000 + run.sweep_index % 3 * 1000,
-    output: 'Simulated worker acquired experiment. Preparing dataset and fitting the Spark model…',
-  }) })
 }

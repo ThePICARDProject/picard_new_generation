@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { advanceSweeps, buildSweepPlan, candidateValues, cancelSweep, initialConfiguration, sweepCounts, sweepStatus } from '../features/sweeps/sweepModel.js'
-import { createDemoSweepRepository, SWEEP_STORAGE_KEY } from '../features/sweeps/sweepRepository.js'
+import { buildSweepPlan, candidateValues, initialConfiguration, sweepCounts, sweepStatus } from '../features/sweeps/sweepModel.js'
+import { createApiSweepRepository, describeError, fromApiSweep, toDefinition } from '../features/sweeps/sweepApi.js'
 
-const manifest = JSON.parse(readFileSync(new URL('../features/sweeps/fixtures/codrift.json', import.meta.url), 'utf8'))
+const manifest = JSON.parse(readFileSync(new URL('../../../backend/scripts/manifests/codrift.json', import.meta.url), 'utf8'))
 const definitions = manifest.parameters
 function draft() {
   const configuration = initialConfiguration(definitions)
@@ -12,10 +12,6 @@ function draft() {
   configuration.maxDepth = { ...configuration.maxDepth, vary: true, candidates: '5, 10' }
   configuration.impurity = { ...configuration.impurity, vary: true, selected: ['gini', 'entropy'] }
   return { name: 'CoDRIFT Hyperparameter Test', algorithm: { id: 'codrift', name: 'CoDRIFT', algorithm_config: manifest }, dataset: { id: 'sample', name: 'Sample dataset' }, configuration }
-}
-function memoryStorage() {
-  const items = new Map()
-  return { getItem: (key) => items.get(key) ?? null, setItem: (key, value) => items.set(key, value) }
 }
 function batch(statuses, requested = false) {
   return { cancel_requested: requested, experiments: statuses.map((status, index) => ({ id: String(index), status })) }
@@ -31,19 +27,6 @@ test('Cartesian product is 3 × 2 × 2 = 12, unique, ordered, and preserves fixe
   assert.equal(plan.combinations[11].numTrees, 30)
   assert.equal(plan.combinations[11].impurity, 'entropy')
   assert.equal(plan.combinations[11].maxDepth, 10)
-})
-
-test('a standard experiment creates one fixed run without requiring parameter variation', async () => {
-  const storage = memoryStorage()
-  const repository = createDemoSweepRepository({ storage, makeId: () => 'single' })
-  const created = await repository.create({ ...draft(), parameterSweep: false })
-  assert.equal(created.parameter_sweep, false)
-  assert.equal(created.experiments.length, 1)
-  assert.equal(created.axes.every((axis) => !axis.varied), true)
-  assert.deepEqual(created.experiments[0].args, ['2', '10', 'gini', '5', '32', '70', '1'])
-  const reloaded = createDemoSweepRepository({ storage })
-  await reloaded.refresh()
-  assert.deepEqual(reloaded.getSnapshot().sweeps, [created])
 })
 
 test('standard configuration validates fixed values even when saved candidates are invalid', () => {
@@ -86,7 +69,7 @@ test('validation rejects empty selections, invalid choices, numeric bounds, and 
   values.numTrees = { ...values.numTrees, mode: 'range', start: '1', end: '100', step: '1' }
   const plan = buildSweepPlan(definitions, values)
   assert.equal(plan.count, 400)
-  assert.match(plan.error, /250 or fewer/)
+  assert.match(plan.error, /100 or fewer/)
   assert.equal(plan.combinations.length, 0)
   assert.ok(buildSweepPlan(definitions, initialConfiguration(definitions)).error)
 })
@@ -119,82 +102,91 @@ test('progress counts failures as completed and cancellation as settled', () => 
   assert.equal(counts.progress, 60)
 })
 
-test('cancelling changes only queued runs and is idempotent', () => {
-  const original = batch(['Running', 'Queued', 'Success', 'Failed', 'Cancelled'])
-  const cancelled = cancelSweep(original)
-  assert.deepEqual(cancelled.experiments.map((run) => run.status), ['Running', 'Cancelled', 'Success', 'Failed', 'Cancelled'])
-  assert.deepEqual(cancelSweep(cancelled), cancelled)
-  assert.equal(original.experiments[1].status, 'Queued')
+test('server counts and status take precedence over the run table', () => {
+  const sweep = { status: 'Running', counts: { Success: 1, Running: 1, Queued: 2 }, experiments: [] }
+  assert.equal(sweepStatus(sweep), 'Running')
+  assert.deepEqual([sweepCounts(sweep).total, sweepCounts(sweep).settled], [4, 1])
 })
 
-test('repository creates queued runs, persists, reloads, and retains structured parameters', async () => {
-  const storage = memoryStorage()
-  const repository = createDemoSweepRepository({ storage, now: () => 100, makeId: () => 'saved' })
-  const created = await repository.create(draft())
-  assert.equal(created.total_count, 12)
-  assert.equal(created.experiments.every((run) => run.status === 'Queued'), true)
-  assert.equal(created.experiments[0].batch, created.id)
-  assert.deepEqual(created.experiments[0].args, ['2', '10', 'gini', '5', '32', '70', '1'])
-  const reloaded = createDemoSweepRepository({ storage })
-  await reloaded.refresh()
-  assert.deepEqual(reloaded.getSnapshot().sweeps, [created])
-  await reloaded.cancel(created.id)
-  await repository.refresh()
-  assert.equal(sweepStatus(repository.getSnapshot().sweeps[0]), 'Cancelled')
+test('form state becomes the API definition: fixed values, lists, choices and ranges', () => {
+  const configuration = draft().configuration
+  configuration.maxBins = { ...configuration.maxBins, vary: true, mode: 'range', start: '16', end: '64', step: '16' }
+  const swept = toDefinition(definitions, configuration, true)
+  assert.deepEqual(swept.numTrees, ['10', '20', '30'])
+  assert.deepEqual(swept.impurity, ['gini', 'entropy'])
+  assert.deepEqual(swept.maxBins, { start: '16', stop: '64', step: '16' })
+  assert.equal(swept.numClasses, '2')
+  // With the sweep option off, every parameter sends its single fixed value.
+  const single = toDefinition(definitions, configuration, false)
+  assert.equal(Object.values(single).every((value) => typeof value === 'string'), true)
 })
 
-test('single worker across sweeps, queued cancellation cannot later start, running finishes', async () => {
-  let time = 1000, id = 0
-  const repository = createDemoSweepRepository({ storage: memoryStorage(), now: () => time, makeId: () => String(++id) })
-  const first = await repository.create(draft())
-  const second = await repository.create(draft())
-  await repository.tick()
-  let sweeps = repository.getSnapshot().sweeps
-  assert.equal(sweeps.flatMap((sweep) => sweep.experiments).filter((run) => run.status === 'Running').length, 1)
-  assert.equal(sweeps.find((sweep) => sweep.id === first.id).experiments[0].status, 'Running')
-  await repository.cancel(first.id)
-  await repository.tick()
-  assert.equal(sweepStatus(repository.getSnapshot().sweeps.find((sweep) => sweep.id === first.id)), 'Running')
-  time += 10000
-  await repository.tick()
-  sweeps = repository.getSnapshot().sweeps
-  const cancelled = sweeps.find((sweep) => sweep.id === first.id)
-  assert.equal(cancelled.experiments[0].status, 'Success')
-  assert.equal(sweepCounts(cancelled).Cancelled, 11)
-  assert.equal(sweepStatus(cancelled), 'Cancelled')
-  await repository.tick()
-  sweeps = repository.getSnapshot().sweeps
-  assert.equal(sweeps.find((sweep) => sweep.id === second.id).experiments[0].status, 'Running')
-  assert.equal(sweepCounts(sweeps.find((sweep) => sweep.id === first.id)).Cancelled, 11)
-})
-
-test('simulation reaches Success and Failed endings without concurrent runs', async () => {
-  const repository = createDemoSweepRepository({ storage: memoryStorage(), makeId: () => 'finish' })
-  const created = await repository.create(draft())
-  let sweeps = [created]
-  for (let tick = 1; tick <= 24; tick++) {
-    sweeps = advanceSweeps(sweeps, tick * 10000)
-    assert.ok(sweepCounts(sweeps[0]).Running <= 1)
+function fakeServer(routes) {
+  const calls = []
+  const request = async (path, options = {}) => {
+    calls.push({ path, ...options })
+    const handler = routes[`${options.method || 'GET'} ${path}`]
+    if (!handler) throw Object.assign(new Error('Not found'), { status: 404 })
+    return handler(options)
   }
-  assert.equal(sweepStatus(sweeps[0]), 'Completed with failures')
-  assert.equal(sweepCounts(sweeps[0]).Success, 10)
-  assert.equal(sweepCounts(sweeps[0]).Failed, 2)
-  assert.equal(sweepCounts(sweeps[0]).progress, 100)
+  return { calls, request }
+}
+const apiSweep = (id, extra = {}) => ({
+  id, name: `Sweep ${id}`, script: { id: 's', name: 'CoDRIFT' }, dataset: { id: 'd', name: 'data.csv' },
+  created_at: '2026-11-25T00:00:00Z', cancel_requested: false, total_count: 2, status: 'Queued',
+  counts: { Queued: 2 }, axes: [], ...extra,
 })
 
-test('storage write failures are visible and creation is not acknowledged', async () => {
-  const repository = createDemoSweepRepository({ storage: { getItem: () => null, setItem: () => { throw new Error('Quota exceeded') } } })
-  await assert.rejects(repository.create(draft()), /Quota exceeded/)
-  assert.equal(repository.getSnapshot().sweeps.length, 0)
-  assert.match(repository.getSnapshot().error, /Quota exceeded/)
-})
-
-test('malformed storage is reported without overwriting the saved data', async () => {
-  const storage = memoryStorage()
-  storage.setItem(SWEEP_STORAGE_KEY, '{broken')
-  const repository = createDemoSweepRepository({ storage })
+test('repository lists, loads and maps API sweeps into page shape', async () => {
+  const run = { id: 'r0', sweep_index: 0, param_values: { k: '1' }, status: 'Queued', has_result: false, result_url: '' }
+  const { request } = fakeServer({
+    'GET /experiments/sweeps/': () => ({ sweeps: [apiSweep('a')] }),
+    'GET /experiments/sweeps/a/': () => apiSweep('a', { status: 'Running', runs: [run] }),
+  })
+  const repository = createApiSweepRepository({ request })
   await repository.refresh()
-  assert.ok(repository.getSnapshot().error)
-  await assert.rejects(repository.create(draft()))
-  assert.equal(storage.getItem(SWEEP_STORAGE_KEY), '{broken')
+  assert.equal(repository.getSnapshot().loading, false)
+  assert.equal(repository.getSnapshot().sweeps[0].algorithm.name, 'CoDRIFT')
+  const detail = await repository.load('a')
+  assert.deepEqual(detail.experiments, [run])
+  // Loading a detail keeps the list's status in step.
+  assert.equal(repository.getSnapshot().sweeps[0].status, 'Running')
+  assert.equal(await repository.load('missing'), null)
+})
+
+test('create, cancel and delete send CSRF-protected requests and update the snapshot', async () => {
+  const server = fakeServer({
+    'POST /experiments/sweeps/': ({ body }) => apiSweep('new', { name: body.name, runs: [] }),
+    'POST /experiments/sweeps/new/cancel/': () => ({ ...apiSweep('new', { status: 'Cancelled', cancel_requested: true, runs: [] }), cancelled: 2 }),
+    'DELETE /experiments/sweeps/new/': () => null,
+  })
+  const repository = createApiSweepRepository({ request: server.request })
+  repository.setCsrfToken('token')
+  const input = { name: ' Trees ', algorithm: { id: 's' }, dataset: { id: 'd' }, definitions, configuration: draft().configuration, parameterSweep: true }
+  assert.deepEqual(await repository.create(input), { id: 'new', notice: '' })
+  assert.equal(server.calls[0].body.name, 'Trees')
+  assert.equal(server.calls[0].body.script_id, 's')
+  assert.equal(server.calls[0].csrfToken, 'token')
+  assert.equal(await repository.cancel('new'), 2)
+  assert.equal(repository.getSnapshot().details.new.status, 'Cancelled')
+  await repository.remove('new')
+  assert.equal(repository.getSnapshot().details.new, undefined)
+  assert.equal(server.calls.at(-1).method, 'DELETE')
+})
+
+test('a partially dispatched sweep still opens, with the server message as a notice', async () => {
+  const { request } = fakeServer({
+    'POST /experiments/sweeps/': () => { throw Object.assign(new Error('2 of 6 runs were queued'), { status: 503, payload: { sweep_id: 'half' } }) },
+  })
+  const repository = createApiSweepRepository({ request })
+  const input = { name: 'x', algorithm: { id: 's' }, dataset: { id: 'd' }, definitions, configuration: draft().configuration, parameterSweep: true }
+  assert.deepEqual(await repository.create(input), { id: 'half', notice: '2 of 6 runs were queued' })
+})
+
+test('errors include per-parameter messages and conflicting run numbers', () => {
+  const error = Object.assign(new Error('Check the highlighted parameters.'), {
+    payload: { errors: { numTrees: 'must be at least 1.' }, duplicate_conflicts: [{ sweep_index: 0 }, { sweep_index: 4 }] },
+  })
+  assert.equal(describeError(error), 'Check the highlighted parameters. numTrees: must be at least 1. Conflicting runs: #1, #5.')
+  assert.equal(fromApiSweep(apiSweep('z')).experiments, undefined)
 })

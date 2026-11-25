@@ -86,7 +86,11 @@ async function apiRequest(path, options = {}) {
   const payload = await parseResponse(response).catch(() => null)
 
   if (!response.ok) {
-    throw new Error(extractErrorMessage(payload, `Request failed with status ${response.status}.`))
+    const error = new Error(extractErrorMessage(payload, `Request failed with status ${response.status}.`))
+    // Callers can read structured details, such as per-parameter errors.
+    error.status = response.status
+    error.payload = payload
+    throw error
   }
 
   return payload

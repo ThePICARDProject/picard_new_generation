@@ -151,7 +151,7 @@ export default function Experiments() {
     <LcarsLayout>
       <section className="panel-card panel-card-accent">
         <p className="lcars-eyebrow">Runs Console</p>
-        <div className="panel-heading-row"><h1>Experiments</h1><Link className="action-button" to="/experiment/new">+ Create experiment</Link></div>
+        <div className="panel-heading-row"><h1>Experiments</h1><Link className="action-button" to="/sweeps/new">+ New sweep</Link></div>
         <p className="lead-copy">
           Queue pending experiments, re-run completed jobs, and watch live output while Spark writes back logs.
         </p>
