@@ -9,6 +9,24 @@ from experiments.commands import build_spark_command
 
 
 EXAMPLES = Path(__file__).resolve().parents[1] / 'scripts' / 'manifests'
+RESOURCE_OPTIONS = {
+    '--deploy-mode', '--driver-memory', '--executor-memory',
+    '--executor-cores', '--total-executor-cores',
+}
+
+
+def without_resource_options(command):
+    # Resource sizes come from the environment, so compare the rest of the
+    # command and check the resource options separately.
+    result, skip = [], False
+    for item in command:
+        if skip:
+            skip = False
+        elif item in RESOURCE_OPTIONS:
+            skip = True
+        else:
+            result.append(item)
+    return result
 
 
 class SparkCommandTests(unittest.TestCase):
@@ -24,7 +42,9 @@ class SparkCommandTests(unittest.TestCase):
                     get_absolute_file_path=lambda: '/uploads/job.jar',
                     algorithm_config=json.loads((EXAMPLES / f'{name}.json').read_text()),
                 )
-                self.assertEqual(build_spark_command(script, '/data/input.csv', '/shared/result-123', args), [
+                command = build_spark_command(script, '/data/input.csv', '/shared/result-123', args)
+                self.assertEqual(command[command.index('--deploy-mode') + 1], 'client')
+                self.assertEqual(without_resource_options(command), [
                     'spark-submit', '--master', 'spark://spark-master:7077', '--class', main_class,
                     '/uploads/job.jar', '/data/input.csv', '/shared', 'result-123', *args,
                 ])
@@ -37,7 +57,7 @@ class SparkCommandTests(unittest.TestCase):
             ]},
         )
         command = build_spark_command(script, '/data/input file.csv', '/shared/result 123', ['two words'])
-        self.assertEqual(command[3:], ['/uploads/job.py', '/data/input file.csv', '/shared', 'result 123', 'two words'])
+        self.assertEqual(without_resource_options(command)[3:], ['/uploads/job.py', '/data/input file.csv', '/shared', 'result 123', 'two words'])
         with self.assertRaises(ValueError):
             build_spark_command(script, None, '/shared/result', ['two words'])
         with self.assertRaises(ValueError):
@@ -49,4 +69,4 @@ class SparkCommandTests(unittest.TestCase):
             get_absolute_file_path=lambda: '/uploads/job.py',
         )
         command = build_spark_command(script, '/data/input.csv', '/shared/result', '"two words"')
-        self.assertEqual(command[3:], ['/uploads/job.py', '/data/input.csv', '/shared/result', 'two words'])
+        self.assertEqual(without_resource_options(command)[3:], ['/uploads/job.py', '/data/input.csv', '/shared/result', 'two words'])

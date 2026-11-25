@@ -23,7 +23,7 @@
 # - Check datasets. Not allowed
 # - Check scripts. Not allowed
 # - Check experiments. Not allowed
-# experiments/test.py
+# experiments/live_api_check.py
 import requests
 import os
 from pathlib import Path

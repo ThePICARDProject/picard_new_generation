@@ -19,6 +19,7 @@ from scripts.models import Script
 
 from .models import SparkExperiment
 from .tasks import run_db_script
+from .test_commands import without_resource_options
 
 
 EXAMPLES = Path(__file__).resolve().parents[1] / 'scripts' / 'manifests'
@@ -214,8 +215,10 @@ class RunExperimentTests(TestCase):
 
         def write_report(command, **kwargs):
             # Act like an algorithm honoring the directory/name contract.
-            self.assertEqual(command[4], self.dataset.get_absolute_file_path())
-            directory = Path(command[5]) / command[6]
+            # The dataset, result directory, and result name follow the script.
+            position = command.index(self.script.get_absolute_file_path())
+            self.assertEqual(command[position + 1], self.dataset.get_absolute_file_path())
+            directory = Path(command[position + 2]) / command[position + 3]
             directory.mkdir()
             (directory / 'part-00001').write_text('second\n')
             (directory / 'part-00000').write_text('first\n')
@@ -275,7 +278,8 @@ class SparkCommandTests(SimpleTestCase):
                     patch('experiments.tasks.subprocess.Popen', return_value=process) as popen:
                 objects.select_related.return_value.get.return_value = experiment
                 run_db_script('demo')
-            self.assertEqual(popen.call_args.args[0], prefix + [
-                directory, 'results_demo.txt', '2', '10', 'gini', '5', '32', '70', '1', 'two words',
+            self.assertEqual(without_resource_options(popen.call_args.args[0]), prefix + [
+                # Scripts without a manifest receive the complete result path.
+                str(Path(directory) / 'results_demo.txt'), '2', '10', 'gini', '5', '32', '70', '1', 'two words',
             ])
             self.assertEqual(experiment.status, 'Success')
